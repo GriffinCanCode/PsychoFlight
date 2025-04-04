@@ -15,26 +15,314 @@
     <style>
         body { margin: 0; overflow: hidden; font-family: 'Press Start 2P', cursive; background-color: #000000; color: #ffffff; }
         #gameCanvas { width: 100%; height: 100vh; display: block; cursor: crosshair; position: fixed; top: 0; left: 0; z-index: 0; }
-        #uiOverlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; display: flex; flex-direction: column; justify-content: space-between; padding: 15px; text-shadow: 1px 1px 3px rgba(0,0,0,0.7); }
-        #topUI { display: flex; justify-content: space-between; align-items: flex-start; width: 100%; }
-        #scoreDisplay { font-size: 1.5rem; color: #00ffcc; }
-        #statusInfo { text-align: right; }
-        #weaponInfo { font-size: 0.8rem; color: #ffff00; }
-        #shiftStatus { font-size: 0.8rem; color: #ff00ff; margin-top: 5px; }
-        #instructions { color: #f0f0f0; padding: 8px; border-radius: 5px; font-size: 0.65rem; background-color: rgba(20, 20, 40, 0.6); border: 1px solid rgba(255, 255, 255, 0.1); align-self: center; margin-bottom: 5px; }
-        #bossHealthBarContainer { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 40%; height: 20px; background-color: rgba(100, 100, 100, 0.5); border: 2px solid #ff00ff; border-radius: 5px; display: none; z-index: 1; }
-        #bossHealthBar { width: 100%; height: 100%; background: linear-gradient(90deg, #ff0000, #ffff00); border-radius: 3px; transition: width 0.2s ease-out; }
-        .game-over-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(circle, rgba(100, 0, 150, 0.8) 0%, rgba(0, 0, 50, 0.95) 100%); display: flex; justify-content: center; align-items: center; z-index: 2; pointer-events: auto; backdrop-filter: blur(5px); }
-        .game-over-content { text-align: center; padding: 30px; border-radius: 15px; border: 5px solid #ff00ff; background-color: rgba(0, 0, 20, 0.8); box-shadow: 0 0 25px #ff00ff, 0 0 10px #ffffff inset; animation: pulseBorder 2s infinite; }
-        @keyframes pulseBorder { 0% { border-color: #ff00ff; box-shadow: 0 0 25px #ff00ff, 0 0 10px #ffffff inset; } 50% { border-color: #00ffff; box-shadow: 0 0 35px #00ffff, 0 0 15px #ffffff inset; } 100% { border-color: #ff00ff; box-shadow: 0 0 25px #ff00ff, 0 0 10px #ffffff inset; } }
-        .game-over-title { font-size: 2.5rem; color: #ffff00; margin-bottom: 1.5rem; text-shadow: 0 0 5px #ffff00, 0 0 10px #ff00ff; }
-        .game-over-score { font-size: 1.5rem; color: #00ffcc; margin-bottom: 2rem; }
-        .play-again-button { padding: 1rem 2rem; background: linear-gradient(45deg, #ff00ff, #00ffff); color: #ffffff; font-family: 'Press Start 2P', cursive; border-radius: 8px; cursor: pointer; font-size: 1.2rem; transition: all 0.3s ease; border: none; box-shadow: 0 0 10px #ffffff, 0 0 5px #000000 inset; text-shadow: 1px 1px 2px #000000; }
-        .play-again-button:hover { transform: scale(1.1); box-shadow: 0 0 20px #ffffff, 0 0 10px #000000 inset; }
-        #crosshair { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 20px; height: 20px; opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 2; }
-        #crosshair::before, #crosshair::after { content: ''; position: absolute; background-color: #00ffcc; }
-        #crosshair::before { top: 0; left: 9px; width: 2px; height: 20px; }
-        #crosshair::after { top: 9px; left: 0; width: 20px; height: 2px; }
+        
+        /* HUD layout and styling */
+        #uiOverlay { 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            pointer-events: none; 
+            z-index: 1; 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: space-between; 
+            padding: 15px; 
+            text-shadow: 0 0 8px rgba(0, 255, 255, 0.7);
+        }
+        
+        /* Top UI bar with score and status */
+        #topUI { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: flex-start; 
+            width: 100%;
+            margin-top: 15px;
+            padding: 0 15px;
+        }
+        
+        /* Score display */
+        #scoreDisplay {
+            font-size: 1.6rem; 
+            color: #00ffcc;
+            position: relative;
+            padding: 10px 20px;
+            background: linear-gradient(90deg, rgba(0, 40, 70, 0.75) 0%, rgba(0, 40, 70, 0) 100%);
+            border-left: 3px solid #00ffcc;
+            border-radius: 2px;
+            animation: pulseBorder 2s infinite alternate;
+        }
+        
+        @keyframes pulseBorder {
+            0% { border-left-color: #00ffcc; box-shadow: 0 0 15px rgba(0, 255, 204, 0.4); }
+            100% { border-left-color: #00ccff; box-shadow: 0 0 25px rgba(0, 204, 255, 0.6); }
+        }
+        
+        /* Status info panel */
+        #statusInfo { 
+            text-align: right;
+            padding: 10px 20px;
+            background: linear-gradient(270deg, rgba(0, 40, 70, 0.75) 0%, rgba(0, 40, 70, 0) 100%);
+            border-right: 3px solid #ff00ff;
+            border-radius: 2px;
+        }
+        
+        /* Weapon info display */
+        #weaponInfo { 
+            font-size: 0.9rem; 
+            color: #ffff00;
+            margin-bottom: 8px;
+            text-shadow: 0 0 10px rgba(255, 255, 0, 0.5);
+            position: relative;
+        }
+        
+        /* Shift status indicator */
+        #shiftStatus { 
+            font-size: 0.8rem; 
+            padding: 5px 10px;
+            margin: 5px 0;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+            transition: all 0.3s ease;
+        }
+
+        /* Teleport status indicator */
+        #teleportStatus { 
+            font-size: 0.8rem; 
+            padding: 5px 10px;
+            margin: 5px 0;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+            transition: all 0.3s ease;
+        }
+        
+        /* Boss health bar styling */
+        #bossHealthBarContainer { 
+            position: absolute; 
+            top: 20px; 
+            left: 50%; 
+            transform: translateX(-50%); 
+            width: 50%; 
+            height: 12px; 
+            background-color: rgba(0, 0, 0, 0.5); 
+            border: 1px solid rgba(255, 255, 255, 0.3); 
+            border-radius: 6px; 
+            display: none; 
+            z-index: 1;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(255, 0, 255, 0.7);
+        }
+        
+        #bossHealthBar { 
+            width: 100%; 
+            height: 100%; 
+            background: linear-gradient(90deg, #ff0088, #ff00ff); 
+            border-radius: 3px; 
+            transition: width 0.2s ease-out;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        #bossHealthBar:after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            animation: healthBarShine 2s infinite linear;
+        }
+        
+        @keyframes healthBarShine {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        
+        @keyframes energyBarShine {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        
+        /* Game instructions */
+        #instructions { 
+            color: #f0f0f0; 
+            padding: 12px; 
+            border-radius: 6px; 
+            font-size: 0.7rem; 
+            background-color: rgba(0, 20, 40, 0.7); 
+            border: 1px solid rgba(0, 255, 255, 0.2); 
+            align-self: center; 
+            margin-bottom: 15px;
+            backdrop-filter: blur(2px);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.2);
+        }
+        
+        /* Crosshair styling */
+        #crosshair { 
+            position: fixed; 
+            top: 50%; 
+            left: 50%; 
+            transform: translate(-50%, -50%); 
+            width: 40px; 
+            height: 40px; 
+            opacity: 0; 
+            transition: opacity 0.3s ease;
+            pointer-events: none; 
+            z-index: 2;
+        }
+        
+        #crosshair::before, 
+        #crosshair::after { 
+            content: ''; 
+            position: absolute; 
+            background-color: transparent;
+        }
+        
+        #crosshair::before { 
+            top: 50%; 
+            left: 0; 
+            right: 0;
+            height: 2px; 
+            background: linear-gradient(90deg, transparent 0%, #00ffcc 20%, #00ffcc 80%, transparent 100%);
+            transform: translateY(-50%);
+        }
+        
+        #crosshair::after { 
+            left: 50%; 
+            top: 0;
+            bottom: 0;
+            width: 2px; 
+            background: linear-gradient(180deg, transparent 0%, #00ffcc 20%, #00ffcc 80%, transparent 100%);
+            transform: translateX(-50%);
+        }
+        
+        #crosshair::before, 
+        #crosshair::after {
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.7);
+        }
+        
+        /* Target lock indicator - new element */
+        #targetLockIndicator {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            width: 70px;
+            height: 70px;
+            transform: translate(-50%, -50%);
+            border: 2px solid rgba(0, 255, 204, 0.7);
+            border-radius: 50%;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 2;
+            box-shadow: 0 0 15px rgba(0, 255, 204, 0.4) inset;
+            animation: targetPulse 1.5s infinite ease-in-out;
+        }
+        
+        @keyframes targetPulse {
+            0% { transform: translate(-50%, -50%) scale(0.8); opacity: 0.7; }
+            50% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(0.8); opacity: 0.7; }
+        }
+        
+        /* Game over overlay styling */
+        .game-over-overlay { 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            background: radial-gradient(circle, rgba(100, 0, 150, 0.8) 0%, rgba(0, 0, 50, 0.95) 100%); 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            z-index: 100; 
+            pointer-events: auto; 
+            backdrop-filter: blur(5px);
+        }
+        
+        .game-over-content { 
+            text-align: center; 
+            padding: 40px; 
+            border-radius: 15px; 
+            border: 5px solid #ff00ff; 
+            background-color: rgba(0, 0, 20, 0.8); 
+            box-shadow: 0 0 50px #ff00ff, 0 0 20px #ffffff inset; 
+            animation: pulseBorderGameOver 3s infinite; 
+        }
+        
+        @keyframes pulseBorderGameOver { 
+            0% { border-color: #ff00ff; box-shadow: 0 0 50px #ff00ff, 0 0 20px #ffffff inset; } 
+            50% { border-color: #00ffff; box-shadow: 0 0 70px #00ffff, 0 0 30px #ffffff inset; } 
+            100% { border-color: #ff00ff; box-shadow: 0 0 50px #ff00ff, 0 0 20px #ffffff inset; } 
+        }
+        
+        .game-over-title { 
+            font-size: 3rem; 
+            color: #ffff00; 
+            margin-bottom: 2rem; 
+            text-shadow: 0 0 15px #ffff00, 0 0 25px #ff00ff;
+            animation: titleGlow 2s infinite alternate;
+        }
+        
+        @keyframes titleGlow {
+            0% { text-shadow: 0 0 15px #ffff00, 0 0 25px #ff00ff; }
+            100% { text-shadow: 0 0 25px #ffff00, 0 0 40px #ff00ff; }
+        }
+        
+        .game-over-score { 
+            font-size: 1.8rem; 
+            color: #00ffcc; 
+            margin-bottom: 2.5rem;
+            text-shadow: 0 0 10px rgba(0, 255, 204, 0.7);
+        }
+        
+        .play-again-button { 
+            padding: 1.2rem 2.5rem; 
+            background: linear-gradient(45deg, #ff00ff, #00ffff); 
+            color: #ffffff; 
+            font-family: 'Press Start 2P', cursive; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            font-size: 1.3rem; 
+            transition: all 0.3s ease; 
+            border: none; 
+            box-shadow: 0 0 20px #ffffff, 0 0 8px #000000 inset; 
+            text-shadow: 2px 2px 4px #000000;
+        }
+        
+        .play-again-button:hover { 
+            transform: scale(1.1); 
+            box-shadow: 0 0 30px #ffffff, 0 0 15px #000000 inset;
+        }
+        
+        /* Warp overlay effect */
+        #warpOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(ellipse at center, rgba(45, 255, 196, 0.5) 0%, rgba(0, 64, 128, 0.5) 50%, rgba(0, 0, 0, 0) 100%);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 3;
+        }
+        
+        /* Scanlines effect */
+        #scanlines {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3) 1px, transparent 1px, transparent 2px);
+            pointer-events: none;
+            opacity: 0;
+            z-index: 4;
+        }
     </style>
 </head>
 <body>
@@ -44,26 +332,37 @@
             <div id="scoreDisplay">Score: 0</div>
             <div id="statusInfo">
                  <div id="weaponInfo">Weapon: Basic</div>
-                 <div id="shiftStatus">Shift: READY</div>
+                 <div id="shiftStatus">SHIFT: READY</div>
+                 <div id="teleportStatus">TELEPORT: READY</div>
             </div>
         </div>
-         <div id="bossHealthBarContainer">
-             <div id="bossHealthBar"></div>
-         </div>
+        <div id="bossHealthBarContainer">
+            <div id="bossHealthBar"></div>
+        </div>
         <div id="instructions">
-            WASD: Steer | Space: Fly | Shift: Boost | G: Fire | X: Dimension Shift | Click: Lock Aim | E: Weapon Evolution Menu
+            WASD: Steer | Space: Fly | Shift: Boost | G: Fire | X: Dimension Shift | Click: Lock Aim | E: Evolution Menu
         </div>
+        
+        <!-- Weapon Energy Indicator -->
+        <div id="weaponEnergyContainer" style="position: fixed; bottom: 30px; right: 30px; width: 200px; height: 15px; background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(0, 255, 255, 0.3); border-radius: 8px; overflow: hidden; box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);">
+            <div id="weaponEnergyBar" style="width: 100%; height: 100%; background: linear-gradient(90deg, #00ccff, #00ffcc); border-radius: 4px; position: relative;">
+                <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent); animation: energyBarShine 2s infinite linear;"></div>
+            </div>
+            <div id="weaponEnergyLabel" style="position: absolute; width: 100%; text-align: center; font-size: 0.6rem; line-height: 15px; color: white; text-shadow: 0 0 3px rgba(0, 0, 0, 0.8);">WEAPON ENERGY</div>
+        </div>
+        
         <div id="crosshair"></div>
-    </div>
-    <div class="game-over-overlay" style="display: none;">
-        <div class="game-over-content">
-            <h2 class="game-over-title">TRANSCENDENCE?</h2>
-            <p class="game-over-score">Final Score: <span id="finalScore">0</span></p>
-            <button class="play-again-button">RE-CALIBRATE</button>
+        <div id="targetLockIndicator"></div>
+        
+        <!-- Target information display -->
+        <div id="targetInfoDisplay" style="position: fixed; top: 60%; left: 50%; transform: translate(-50%, 0); background: rgba(0, 40, 70, 0.75); border: 1px solid #00ffcc; border-radius: 5px; padding: 8px 15px; color: #ffffff; font-size: 0.8rem; opacity: 0; transition: opacity 0.3s ease; z-index: 2; pointer-events: none; text-align: center; box-shadow: 0 0 15px rgba(0, 255, 204, 0.4);">
+            <div id="targetType" style="color: #00ffcc; margin-bottom: 5px;">TARGET ACQUIRED</div>
+            <div id="targetDistance" style="font-size: 0.7rem;">DISTANCE: 100M</div>
         </div>
     </div>
-
-    <!-- Ensure this line exists and points to the correct entry point -->
-    <script type="module" src="js/game.js" defer></script>
+    
+    <!-- Visual effect overlays -->
+    <div id="warpOverlay"></div>
+    <div id="scanlines"></div>
 </body>
 </html>

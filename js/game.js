@@ -1,14 +1,14 @@
 // --- Main Game Module ---
 import audioSystem from './modules/audio.js';
+import weaponsSystem from './modules/weapons.js';
 import effectsSystem from './modules/effects.js';
 import playerSystem from './modules/player.js';
-import weaponsSystem from './modules/weapons.js';
 import targetsSystem from './modules/targets.js';
 import bossSystem from './modules/boss.js';
-import uiSystem from './modules/ui.js';
 import evolutionUI from './modules/evolution_ui.js';
 import worldSystem from './modules/world.js';
 import enemiesSystem from './modules/enemies.js';
+import hudSystem from './modules/hud.js';
 
 // Make certain variables global for compatibility with the original monolithic approach
 window.scene = null;
@@ -39,6 +39,10 @@ let lockedTarget = null;
 let aimDirection = new THREE.Vector3(0, 0, -1); // Initialize aim direction
 let lastAccelerationStreakTime = 0;
 let lastWarpEffectTime = 0;
+let weaponEnergy = 100; // Full energy
+let lastWeaponEnergyRecharge = Date.now(); // For recharging weapon energy
+let energyRechargeRate = 10; // Energy points per second
+let energyUseRate = 30; // Energy points per second while firing
 let fovTransition = {
     current: 75, // Default FOV
     target: 75,
@@ -94,7 +98,7 @@ async function initGame() {
 
         // Initialize UI systems first
         console.log("Initializing UI systems...");
-        uiSystem.init();
+        hudSystem.init();
         evolutionUI.init();
         console.log("UI systems initialized");
 
@@ -304,23 +308,6 @@ function createWarpOverlay() {
     warpOverlay.appendChild(lineContainer);
     document.body.appendChild(warpOverlay);
     
-    // Add subtle scanline effect 
-    const scanlines = document.createElement('div');
-    scanlines.id = 'scanlines';
-    scanlines.style.position = 'fixed';
-    scanlines.style.top = '0';
-    scanlines.style.left = '0';
-    scanlines.style.width = '100%';
-    scanlines.style.height = '100%';
-    scanlines.style.pointerEvents = 'none';
-    scanlines.style.zIndex = '4'; // Above canvas but below HUD
-    scanlines.style.opacity = '0';
-    scanlines.style.backgroundImage = 'linear-gradient(rgba(0, 30, 50, 0.03) 50%, transparent 50%)'; // Very subtle
-    scanlines.style.backgroundSize = '100% 4px';
-    scanlines.style.mixBlendMode = 'overlay';
-    
-    document.body.appendChild(scanlines);
-    
     // Create vignette effect for tunnel-like visualization
     const vignette = document.createElement('div');
     vignette.id = 'vignette';
@@ -373,23 +360,24 @@ function createWarpOverlay() {
 function updateWarpOverlay(isAccelerating, deltaTime) {
     if (!warpOverlay) return;
     
-    // Update color distortion with smoother transition
+    // Lerp the intensity for smoother transitions (existing code)
     colorDistortion.targetIntensity = isAccelerating ? DIMENSION_WARP_INTENSITY : 0;
     colorDistortion.intensity = THREE.MathUtils.lerp(
         colorDistortion.intensity, 
         colorDistortion.targetIntensity, 
-        deltaTime * 3 // Gentler transition
+        Math.min(1, deltaTime * 5)
     );
     
     // Update warp overlay effects based on acceleration
     const warpOpacity = Math.min(1, colorDistortion.intensity * 1.2);
-    warpOverlay.style.opacity = warpOpacity.toString();
     
-    // Make gradients more subtle when accelerating
-    if (isAccelerating) {
-        // More subtle blue tones
+    // Use the HUD system to manage warp effect visuals
+    hudSystem.updateWarpEffect(warpOpacity);
+    
+    // Keep the rest of the existing code for other warp effects not in the HUD
+    if (warpOpacity > 0.05) {
         warpOverlay.style.background = `radial-gradient(ellipse at center, 
-            transparent 50%, 
+            rgba(0, 70, 120, ${warpOpacity * 0.1}) 50%, 
             rgba(10, 40, 100, ${warpOpacity * 0.15}) 75%, 
             rgba(0, 20, 60, ${warpOpacity * 0.2}) 100%)`; // Subtle gradient
     } else {
@@ -537,7 +525,7 @@ function updateBackground(audioLevel) {
         audioLevel, 
         window.renderer, 
         gameStartTime,
-        uiSystem.getScore(),
+        hudSystem.getScore(),
         targetsSystem,
         playerSystem
     );
@@ -584,12 +572,12 @@ function setupInputListeners() {
                 break;
             case 'x':
                 if (playerSystem.startShift()) {
-                    uiSystem.updateShiftStatus(true);
+                    hudSystem.updateShiftStatus(true);
                 }
                 break;
             case 't':
                 if (playerSystem.startTeleport()) {
-                    uiSystem.updateTeleportStatus(true);
+                    hudSystem.updateTeleportStatus(true);
                 }
                 break;
             case 'e':
@@ -639,7 +627,7 @@ function setupInputListeners() {
             if (lockedTarget) {
                 console.log("Target unlocked manually."); // Log unlock
                 // Unhighlight the locked target
-                uiSystem.highlightTarget(lockedTarget, false);
+                hudSystem.highlightTarget(lockedTarget, false, window.plane.position);
                 lockedTarget = null; 
             } else {
                 findAndLockTarget();
@@ -650,13 +638,13 @@ function setupInputListeners() {
     document.addEventListener('pointerlockchange', () => {
         isPointerLocked = document.pointerLockElement === canvas;
         // Update crosshair visibility using UI module
-        uiSystem.updateCrosshair(isPointerLocked);
+        hudSystem.updateCrosshair(isPointerLocked);
         
         if (!isPointerLocked) {
             // If we lose pointer lock, unlock target
             if (lockedTarget) {
                 // Unhighlight the locked target
-                uiSystem.highlightTarget(lockedTarget, false);
+                hudSystem.highlightTarget(lockedTarget, false, window.plane.position);
                 lockedTarget = null;
             }
             // Optional: Pause game or show menu
@@ -718,12 +706,15 @@ function findAndLockTarget() {
     if (intersects.length > 0) {
         // If we already had a locked target, unhighlight it
         if (lockedTarget && lockedTarget !== intersects[0].object) {
-            uiSystem.highlightTarget(lockedTarget, false);
+            hudSystem.highlightTarget(lockedTarget, false, window.plane.position);
         }
         
         lockedTarget = intersects[0].object;
         // Highlight the newly locked target
-        uiSystem.highlightTarget(lockedTarget, true);
+        hudSystem.highlightTarget(lockedTarget, true, window.plane.position);
+        
+        // Play a target lock sound
+        audioSystem.playSound(audioSystem.spreadSynth || audioSystem.flamethrowerSynth, ["A5", "E6"], "16n");
         
         console.log("Target locked via direct hit:", { id: lockedTarget.uuid, pos: lockedTarget.position });
         return;
@@ -787,12 +778,15 @@ function findAndLockTarget() {
     if (bestTarget) {
         // If we already had a locked target, unhighlight it
         if (lockedTarget && lockedTarget !== bestTarget) {
-            uiSystem.highlightTarget(lockedTarget, false);
+            hudSystem.highlightTarget(lockedTarget, false, window.plane.position);
         }
         
         lockedTarget = bestTarget;
         // Highlight the newly locked target
-        uiSystem.highlightTarget(lockedTarget, true);
+        hudSystem.highlightTarget(lockedTarget, true, window.plane.position);
+        
+        // Play a target lock sound
+        audioSystem.playSound(audioSystem.spreadSynth || audioSystem.flamethrowerSynth, ["A5", "E6"], "16n");
         
         console.log("Target locked via weighted score:", { id: lockedTarget.uuid, score: bestScore.toFixed(2) });
         return;
@@ -823,7 +817,7 @@ function updateAimDirection() {
             lockedTarget.position.distanceTo(projectileOrigin) > MAX_LOCK_DISTANCE * 1.5) { // Check if target moved too far
             
             console.log("Locked target invalidated.");
-            uiSystem.highlightTarget(lockedTarget, false); // Unhighlight target
+            hudSystem.highlightTarget(lockedTarget, false, window.plane.position); // Unhighlight target
             lockedTarget = null; // Invalidate lock
         }
     }
@@ -843,17 +837,17 @@ function updateAimDirection() {
 
 // Game interaction functions
 function checkWeaponLevelUp() {
-    const score = uiSystem.getScore();
+    const score = hudSystem.getScore();
     
     // Use the evolution system to check for unlocks
     const result = weaponsSystem.checkWeaponUnlocks(score, evolutionUI);
     
     if (result.leveledUp) {
         // Update the weapon info in the UI
-        uiSystem.updateWeaponInfo(weaponsSystem.getWeaponName());
+        hudSystem.updateWeaponInfo(weaponsSystem.getWeaponName());
         
         // Add notification about new weapons being available
-        uiSystem.showNotification("New weapon evolution available! Press E to view");
+        hudSystem.showNotification("New weapon evolution available! Press E to view");
     }
     
     return result;
@@ -885,8 +879,8 @@ function damageTargetWrapper(target, amount, hitPosition) {
         amount, 
         hitPosition, 
         window.scene, 
-        uiSystem.getScore(), 
-        uiSystem.setScore
+        hudSystem.getScore(), 
+        hudSystem.setScore
     );
     
     // Debug: log target health after damage or destruction status
@@ -899,7 +893,7 @@ function damageTargetWrapper(target, amount, hitPosition) {
     // If target was destroyed and it was the locked target, unlock it
     if (destroyed && target === lockedTarget) {
         console.log("Locked target destroyed, unlocking.");
-        uiSystem.highlightTarget(lockedTarget, false); // Unhighlight it first
+        hudSystem.highlightTarget(lockedTarget, false, window.plane.position); // Unhighlight it first
         lockedTarget = null; // Unlock if the locked target is destroyed
     }
     
@@ -919,16 +913,20 @@ function damageBossWrapper(amount, hitPosition) {
         amount, 
         hitPosition, 
         window.scene, 
-        uiSystem.getScore(), 
-        uiSystem.setScore
+        hudSystem.getScore(), 
+        hudSystem.setScore
     );
 
     // Check boss health after damage (ensure getBossHealth exists)
-    const bossHealth = bossSystem.getBossHealth ? bossSystem.getBossHealth() : null; 
+    const bossHealth = bossSystem.getBossHealth ? bossSystem.getBossHealth() : null;
     const bossObject = bossSystem.getBossObject ? bossSystem.getBossObject() : null;
 
+    if (bossHealth) {
+        // Update boss health bar in HUD
+        hudSystem.updateBossHealthBar(bossHealth.percentage);
+    }
     if (bossHealth && bossHealth.current <= 0 && bossObject && bossObject === lockedTarget) {
-         console.log("Locked boss destroyed, unlocking.");
+        console.log("Locked boss destroyed, unlocking.");
         lockedTarget = null; // Unlock if boss is destroyed
     }
     return result; 
@@ -940,8 +938,8 @@ function damageTarget(target, amount, hitPosition) {
         amount, 
         hitPosition, 
         window.scene, 
-        uiSystem.getScore(), 
-        uiSystem.setScore
+        hudSystem.getScore(), 
+        hudSystem.setScore
     );
 }
 
@@ -950,13 +948,13 @@ function damageBoss(amount, hitPosition) {
         amount, 
         hitPosition, 
         window.scene, 
-        uiSystem.getScore(), 
-        uiSystem.setScore
+        hudSystem.getScore(), 
+        hudSystem.setScore
     );
 }
 
 function checkGameOver() {
-    if (uiSystem.isGameOver()) return;
+    if (hudSystem.isGameOver()) return;
     
     // Check if player is too far from origin
     if (window.plane.position.length() > 2500 || window.plane.position.z < -1500) {
@@ -1002,7 +1000,7 @@ function checkGameOver() {
 }
 
 function triggerGameOver(reason = "Reality Overload") {
-    if (uiSystem.isGameOver()) return;
+    if (hudSystem.isGameOver()) return;
     
     // Stop player
     playerSystem.setIsFlying(false);
@@ -1012,7 +1010,7 @@ function triggerGameOver(reason = "Reality Overload") {
     document.exitPointerLock?.();
     
     // Show game over screen
-    uiSystem.showGameOver(reason);
+    hudSystem.showGameOver(reason);
     
     // Clean up game objects
     cleanupGameObjects();
@@ -1035,20 +1033,21 @@ function cleanupGameObjects() {
 // Game restart
 function restartGame() {
     // Reset game state
-    uiSystem.resetUI();
+    hudSystem.resetHUD();
     playerSystem.resetPlane();
     
     // Reset weapon to basic
     weaponsSystem.setCurrentWeapon('basic');
-    uiSystem.updateWeaponInfo(weaponsSystem.getWeaponName());
+    hudSystem.updateWeaponInfo(weaponsSystem.getWeaponName());
     
     // Reset game variables
     keys = {};
     isFiring = false;
+    weaponEnergy = 100; // Reset weapon energy
     
     // Reset targeting
     if (lockedTarget) {
-        uiSystem.highlightTarget(lockedTarget, false);
+        hudSystem.highlightTarget(lockedTarget, false, window.plane.position);
         lockedTarget = null;
     }
     aimDirection.set(0, 0, -1); // Reset aim direction
@@ -1062,10 +1061,10 @@ function restartGame() {
     cleanupGameObjects();
     
     // Reset warp/HUD effects
-    resetGame();
+    resetWarpEffects();
     
-    // Hide UI overlays
-    document.querySelector('.game-over-overlay').style.display = 'none';
+    // Hide game over screen using the HUD system
+    hudSystem.hideGameOver();
     
     // Lock cursor again
     const canvas = document.getElementById('gameCanvas');
@@ -1077,7 +1076,7 @@ function restartGame() {
 
 // Main animation loop
 function animate() {
-    if (uiSystem.isGameOver()) return;
+    if (hudSystem.isGameOver()) return;
     
     // Don't animate when evolution menu is open
     if (evolutionUI.isOpen()) {
@@ -1112,13 +1111,18 @@ function animate() {
         // Update aim direction for weapon targeting
         updateAimDirection();
         
+        // Update target information display with latest distance
+        if (lockedTarget) {
+            hudSystem.updateTargetInfo(lockedTarget, true, window.plane.position);
+        }
+        
         // Update dimension shift
         const shiftStatus = playerSystem.updateShiftStatus();
-        uiSystem.updateShiftStatus(shiftStatus);
+        hudSystem.updateShiftStatus(shiftStatus);
         
         // Update teleport
         const teleportStatus = playerSystem.updateTeleportStatus();
-        uiSystem.updateTeleportStatus(teleportStatus);
+        hudSystem.updateTeleportStatus(teleportStatus);
         
         // Update effects
         effectsSystem.updateEffects(deltaTime);
@@ -1135,10 +1139,10 @@ function animate() {
             (target, amount, hitPosition) => {
                 if (target.userData.type) {
                     // This is an enemy
-                    return enemiesSystem.damageEnemy(target, amount, hitPosition, window.scene, uiSystem.getScore(), uiSystem.setScore);
+                    return enemiesSystem.damageEnemy(target, amount, hitPosition, window.scene, hudSystem.getScore(), hudSystem.setScore);
                 } else {
                     // This is a regular target
-                    return targetsSystem.damageTarget(target, amount, hitPosition, window.scene, uiSystem.getScore(), uiSystem.setScore);
+                    return targetsSystem.damageTarget(target, amount, hitPosition, window.scene, hudSystem.getScore(), hudSystem.setScore);
                 }
             },
             damageBossWrapper
@@ -1159,6 +1163,10 @@ function animate() {
         // Update boss if active
         if (bossSystem.isBossActive()) {
             bossSystem.updateBoss(deltaTime, window.scene);
+            const bossHealth = bossSystem.getBossHealth();
+            if (bossHealth) {
+                hudSystem.updateBossHealthBar(bossHealth.percentage);
+            }
         }
         
         // Firing logic
@@ -1172,6 +1180,38 @@ function animate() {
                 bossSystem.getBossObject(),
                 bossSystem.isBossActive()
             );
+        }
+        
+        // Handle weapon energy
+        const now = Date.now();
+        const deltaSeconds = deltaTime;
+        
+        // Decrease energy while firing
+        if (isFiring && !playerSystem.isShifting()) {
+            weaponEnergy = Math.max(0, weaponEnergy - energyUseRate * deltaSeconds);
+        } 
+        // Recharge energy when not firing
+        else {
+            // Only recharge after a short delay since last fire
+            if (now - lastWeaponEnergyRecharge > 1000) { // 1 second recharge delay
+                weaponEnergy = Math.min(100, weaponEnergy + energyRechargeRate * deltaSeconds);
+            }
+        }
+        
+        // Update the energy display
+        hudSystem.updateWeaponEnergy(weaponEnergy, weaponsSystem.getWeaponName());
+        
+        // If we run out of energy, stop firing
+        if (weaponEnergy <= 0 && isFiring) {
+            // Can't fire with no energy
+            isFiring = false;
+            // Set recharge delay
+            lastWeaponEnergyRecharge = now;
+        }
+        
+        // If we start firing, update the last recharge time
+        if (isFiring) {
+            lastWeaponEnergyRecharge = now;
         }
         
         // Check for game over conditions
@@ -1257,34 +1297,13 @@ function updateVisualEffects(elapsedTime, audioLevel, deltaTime) {
     // Update star size is now handled in worldSystem.update()
 }
 
-function resetGame() {
-    // Reset color distortion
-    colorDistortion.active = false;
+function resetWarpEffects() {
+    // Use the HUD system to reset warp effects
+    hudSystem.updateWarpEffect(0);
+    
+    // Reset any other warp-related effects not handled by HUD
     colorDistortion.intensity = 0;
     colorDistortion.targetIntensity = 0;
-    
-    // Reset canvas style
-    const canvas = document.getElementById('gameCanvas');
-    if (canvas) {
-        canvas.style.filter = 'none';
-        canvas.style.animation = 'none';
-    }
-    
-    // Reset warp overlay
-    if (warpOverlay) {
-        warpOverlay.style.opacity = '0';
-        warpOverlay.style.background = 'radial-gradient(circle, transparent 30%, rgba(0, 60, 100, 0) 70%)';
-    }
-    
-    const scanlines = document.getElementById('scanlines');
-    if (scanlines) {
-        scanlines.style.opacity = '0';
-    }
-    
-    const lines = document.getElementById('warpLines');
-    if (lines) {
-        lines.style.opacity = '0';
-    }
 }
 
 // Make functions globally available (Careful with globals!)
