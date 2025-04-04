@@ -360,7 +360,8 @@ const playerSystem = (() => {
         getShiftMaterial,
         getOriginalMaterials,
         updateVisuals,
-        getMaterials
+        getMaterials,
+        isShifting: () => isShifting
     };
 })();
 

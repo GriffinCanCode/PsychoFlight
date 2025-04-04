@@ -1,13 +1,15 @@
-import { weaponTypes, evolutionTree } from '../data/evolution_tree.js';
+import { weaponTypes, evolutionTree as treeData } from '../data/evolution_tree.js';
 import planeIcons from '../data/plane_icons.js';
 import audioSystem from './audio.js';
 import uiSystem from './ui.js';
 
 const evolutionUI = (() => {
     // Private variables
-    let isEvolutionMenuOpen = false;
+    let isMenuOpen = false;
+    let evolutionContainer = null;
+    let evolutionTreeData = null;
+    let evolutionTreeContainer = null;
     let currentWeaponId = 'basic';
-    let evolutionContainer;
     let svg;
     let nodeElements = new Map();
     let lineElements = new Map();
@@ -17,1273 +19,234 @@ const evolutionUI = (() => {
     const svgNS = "http://www.w3.org/2000/svg";
     
     // Constants
-    const SVG_WIDTH = 800;
-    const SVG_HEIGHT = 600;
+    const SVG_WIDTH = 1200;
+    const SVG_HEIGHT = 800;
     const NODE_RADIUS = 35;
-    const GRID_SIZE_X = 80;
-    const GRID_SIZE_Y = 80;
+    const GRID_SIZE_X = 220;
+    const GRID_SIZE_Y = 160;
     const CENTER_X = SVG_WIDTH / 2;
-    const CENTER_Y = SVG_HEIGHT / 2 + 310;
+    const CENTER_Y = SVG_HEIGHT / 2;
     
-    // Initialization
+    // Initialize the UI elements
     function init() {
-        createEvolutionMenu();
-        setupEventListeners();
-        return { evolutionContainer };
-    }
-    
-    // Create the main evolution menu container
-    function createEvolutionMenu() {
-        // Create container
-        evolutionContainer = document.createElement('div');
-        evolutionContainer.id = 'evolutionMenu';
-        evolutionContainer.className = 'evolution-menu-container';
-        evolutionContainer.style.display = 'none';
+        // Initialize tree data
+        evolutionTreeData = treeData;
         
-        // Add animated background particles
-        const particlesContainer = document.createElement('div');
-        particlesContainer.className = 'particles-container';
-        
-        // Create multiple particle elements with different sizes and speeds
-        for (let i = 0; i < 50; i++) {
-            const particle = document.createElement('div');
-            particle.className = 'particle';
+        // Create the evolution menu container if it doesn't exist
+        if (!evolutionContainer) {
+            evolutionContainer = document.createElement('div');
+            evolutionContainer.id = 'evolutionMenu';
+            evolutionContainer.style.display = 'none';
+            evolutionContainer.style.position = 'fixed';
+            evolutionContainer.style.top = '0';
+            evolutionContainer.style.left = '0';
+            evolutionContainer.style.width = '100vw';
+            evolutionContainer.style.height = '100vh';
+            evolutionContainer.style.backgroundColor = 'rgba(0, 10, 30, 0.97)';
+            evolutionContainer.style.backdropFilter = 'blur(10px)';
+            evolutionContainer.style.color = 'white';
+            evolutionContainer.style.fontFamily = '"Press Start 2P", monospace';
+            evolutionContainer.style.zIndex = '1000';
+            evolutionContainer.style.display = 'none';
+            evolutionContainer.style.flexDirection = 'column';
+            evolutionContainer.style.alignItems = 'center';
+            evolutionContainer.style.justifyContent = 'center';
+            evolutionContainer.style.overflow = 'hidden';
             
-            // Randomize particle properties
-            const size = Math.random() * 3 + 1; // 1-4px
-            const posX = Math.random() * 100; // 0-100%
-            const posY = Math.random() * 100; // 0-100%
-            const duration = Math.random() * 60 + 60; // 60-120s
-            const delay = Math.random() * -60; // -60-0s
+            // Create the evolution tree container
+            evolutionTreeContainer = document.createElement('div');
+            evolutionTreeContainer.id = 'evolutionTree';
+            evolutionTreeContainer.style.position = 'relative';
+            evolutionTreeContainer.style.width = '95vw';
+            evolutionTreeContainer.style.height = '80vh';
+            evolutionTreeContainer.style.background = 'radial-gradient(circle at 50% 50%, rgba(0, 20, 60, 0.9) 0%, rgba(0, 5, 20, 0.95) 100%)';
+            evolutionTreeContainer.style.borderRadius = '30px';
+            evolutionTreeContainer.style.boxShadow = '0 0 150px rgba(0, 150, 255, 0.2), inset 0 0 300px rgba(0, 100, 255, 0.15)';
+            evolutionTreeContainer.style.border = '3px solid rgba(100, 200, 255, 0.3)';
+            evolutionTreeContainer.style.padding = '60px';
+            evolutionTreeContainer.style.margin = '30px 0';
+            evolutionTreeContainer.style.overflow = 'hidden';
             
-            // Apply styles
-            particle.style.width = `${size}px`;
-            particle.style.height = `${size}px`;
-            particle.style.left = `${posX}%`;
-            particle.style.top = `${posY}%`;
-            particle.style.animationDuration = `${duration}s`;
-            particle.style.animationDelay = `${delay}s`;
+            // Create and initialize SVG element
+            svg = document.createElementNS(svgNS, "svg");
+            svg.setAttribute('width', '100%');
+            svg.setAttribute('height', '100%');
+            svg.setAttribute('viewBox', `0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`);
+            svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+            svg.setAttribute('class', 'evolution-svg');
+            svg.style.filter = 'drop-shadow(0 0 30px rgba(0, 150, 255, 0.3))';
+
+            // Add SVG definitions
+            const defs = document.createElementNS(svgNS, "defs");
             
-            // Add some variety in particle colors
-            if (i % 5 === 0) particle.style.backgroundColor = '#60FFFF'; // Cyan
-            else if (i % 5 === 1) particle.style.backgroundColor = '#FF60FF'; // Pink
-            else if (i % 5 === 2) particle.style.backgroundColor = '#FFA060'; // Orange
+            // Node glow filter
+            const nodeGlow = document.createElementNS(svgNS, "filter");
+            nodeGlow.setAttribute("id", "nodeGlow");
+            nodeGlow.innerHTML = `
+                <feGaussianBlur stdDeviation="3" result="blur"/>
+                <feFlood flood-color="rgba(0, 150, 255, 0.6)" result="color"/>
+                <feComposite in="color" in2="blur" operator="in" result="glow"/>
+                <feMerge>
+                    <feMergeNode in="glow"/>
+                    <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+            `;
+            defs.appendChild(nodeGlow);
+
+            // Icon glow filter with improved visibility
+            const iconGlow = document.createElementNS(svgNS, "filter");
+            iconGlow.setAttribute("id", "iconGlow");
+            iconGlow.innerHTML = `
+                <feGaussianBlur stdDeviation="1.5" result="blur"/>
+                <feFlood flood-color="rgba(255, 255, 255, 0.9)" result="color"/>
+                <feComposite in="color" in2="blur" operator="in" result="glow"/>
+                <feMerge>
+                    <feMergeNode in="glow"/>
+                    <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+            `;
+            defs.appendChild(iconGlow);
+
+            // Text glow filter
+            const textGlow = document.createElementNS(svgNS, "filter");
+            textGlow.setAttribute("id", "textGlow");
+            textGlow.innerHTML = `
+                <feGaussianBlur stdDeviation="2" result="blur"/>
+                <feFlood flood-color="rgba(0, 150, 255, 0.8)" result="color"/>
+                <feComposite in="color" in2="blur" operator="in" result="glow"/>
+                <feMerge>
+                    <feMergeNode in="glow"/>
+                    <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+            `;
+            defs.appendChild(textGlow);
+
+            // Line gradient with improved visibility
+            const lineGradient = document.createElementNS(svgNS, "linearGradient");
+            lineGradient.setAttribute("id", "lineGradient");
+            lineGradient.innerHTML = `
+                <stop offset="0%" stop-color="rgba(0, 150, 255, 0.9)"/>
+                <stop offset="100%" stop-color="rgba(0, 100, 255, 0.6)"/>
+            `;
+            defs.appendChild(lineGradient);
+
+            // Line pattern filter
+            const holoLinePattern = document.createElementNS(svgNS, "filter");
+            holoLinePattern.setAttribute("id", "holoLinePattern");
+            holoLinePattern.innerHTML = `
+                <feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="2" result="noise"/>
+                <feDisplacementMap in="SourceGraphic" in2="noise" scale="2"/>
+            `;
+            defs.appendChild(holoLinePattern);
+
+            // Arrow marker with improved visibility
+            const arrow = document.createElementNS(svgNS, "marker");
+            arrow.setAttribute("id", "arrow");
+            arrow.setAttribute("viewBox", "0 0 10 10");
+            arrow.setAttribute("refX", "5");
+            arrow.setAttribute("refY", "5");
+            arrow.setAttribute("markerWidth", "4");
+            arrow.setAttribute("markerHeight", "4");
+            arrow.setAttribute("orient", "auto-start-reverse");
+            const arrowPath = document.createElementNS(svgNS, "path");
+            arrowPath.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
+            arrowPath.setAttribute("fill", "rgba(0, 150, 255, 0.9)");
+            arrow.appendChild(arrowPath);
+            defs.appendChild(arrow);
+
+            svg.appendChild(defs);
+
+            // Add SVG to tree container
+            evolutionTreeContainer.appendChild(svg);
             
-            particlesContainer.appendChild(particle);
+            // Create header
+            const header = document.createElement('div');
+            header.style.width = '100%';
+            header.style.display = 'flex';
+            header.style.justifyContent = 'center';
+            header.style.alignItems = 'center';
+            header.style.position = 'relative';
+            header.style.padding = '20px';
+            
+            const title = document.createElement('h2');
+            title.textContent = 'WEAPON EVOLUTION';
+            title.style.fontSize = '3rem';
+            title.style.margin = '0';
+            title.style.color = '#40FFFF';
+            title.style.textShadow = '0 0 20px rgba(64, 255, 255, 0.8), 0 0 40px rgba(64, 255, 255, 0.4)';
+            title.style.letterSpacing = '4px';
+            title.style.fontFamily = '"Press Start 2P", monospace';
+            title.style.animation = 'pulseTitleGlow 3s infinite';
+            
+            const closeButton = document.createElement('button');
+            closeButton.textContent = '×';
+            closeButton.style.position = 'absolute';
+            closeButton.style.right = '40px';
+            closeButton.style.top = '50%';
+            closeButton.style.transform = 'translateY(-50%)';
+            closeButton.style.background = 'none';
+            closeButton.style.border = '2px solid #FF60FF';
+            closeButton.style.color = '#FF60FF';
+            closeButton.style.width = '60px';
+            closeButton.style.height = '60px';
+            closeButton.style.borderRadius = '50%';
+            closeButton.style.fontSize = '36px';
+            closeButton.style.cursor = 'pointer';
+            closeButton.style.display = 'flex';
+            closeButton.style.alignItems = 'center';
+            closeButton.style.justifyContent = 'center';
+            closeButton.style.transition = 'all 0.3s ease';
+            closeButton.style.boxShadow = '0 0 20px rgba(255, 96, 255, 0.5)';
+            closeButton.style.textShadow = '0 0 10px rgba(255, 96, 255, 0.8)';
+            closeButton.onclick = toggleEvolutionMenu;
+
+            closeButton.addEventListener('mouseover', () => {
+                closeButton.style.background = 'rgba(255, 96, 255, 0.2)';
+                closeButton.style.boxShadow = '0 0 30px rgba(255, 96, 255, 0.8)';
+                closeButton.style.transform = 'translateY(-50%) scale(1.1)';
+            });
+
+            closeButton.addEventListener('mouseout', () => {
+                closeButton.style.background = 'none';
+                closeButton.style.boxShadow = '0 0 20px rgba(255, 96, 255, 0.5)';
+                closeButton.style.transform = 'translateY(-50%) scale(1)';
+            });
+
+            header.appendChild(title);
+            header.appendChild(closeButton);
+            
+            // Add elements to container
+            evolutionContainer.appendChild(header);
+            evolutionContainer.appendChild(evolutionTreeContainer);
+            
+            // Add to document
+            document.body.appendChild(evolutionContainer);
+
+            // Add CSS styles for the evolution UI
+            addEvolutionStyles();
         }
-        
-        evolutionContainer.appendChild(particlesContainer);
-        
-        // Create header
-        const header = document.createElement('div');
-        header.className = 'evolution-header';
-        
-        const title = document.createElement('h2');
-        title.textContent = 'WEAPON EVOLUTION';
-        title.className = 'evolution-title';
-        
-        const closeBtn = document.createElement('button');
-        closeBtn.textContent = '×';
-        closeBtn.className = 'evolution-close-btn';
-        closeBtn.addEventListener('click', toggleEvolutionMenu);
-        
-        header.appendChild(title);
-        header.appendChild(closeBtn);
-        evolutionContainer.appendChild(header);
-        
-        // Create SVG container for the tree
-        svg = document.createElementNS(svgNS, "svg");
-        svg.setAttribute('width', SVG_WIDTH);
-        svg.setAttribute('height', SVG_HEIGHT);
-        svg.setAttribute('viewBox', `0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`);
-        svg.setAttribute('class', 'evolution-svg');
-        
-        // Update SVG rendering quality
-        svg.setAttribute('shape-rendering', 'geometricPrecision');
-        svg.setAttribute('text-rendering', 'geometricPrecision');
-        svg.setAttribute('image-rendering', 'optimizeQuality');
-        
-        // Add gradient definitions
-        const defs = document.createElementNS(svgNS, "defs");
-        
-        // Create glowing line gradient
-        const lineGradient = document.createElementNS(svgNS, "linearGradient");
-        lineGradient.id = "lineGradient";
-        lineGradient.setAttribute("x1", "0%");
-        lineGradient.setAttribute("y1", "0%");
-        lineGradient.setAttribute("x2", "100%");
-        lineGradient.setAttribute("y2", "0%");
-        
-        const stop1 = document.createElementNS(svgNS, "stop");
-        stop1.setAttribute("offset", "0%");
-        stop1.setAttribute("stop-color", "#4080FF");
-        stop1.setAttribute("stop-opacity", "0.8");
-        
-        const stop2 = document.createElementNS(svgNS, "stop");
-        stop2.setAttribute("offset", "50%");
-        stop2.setAttribute("stop-color", "#60FFFF");
-        stop2.setAttribute("stop-opacity", "1");
-        
-        const stop3 = document.createElementNS(svgNS, "stop");
-        stop3.setAttribute("offset", "100%");
-        stop3.setAttribute("stop-color", "#4080FF");
-        stop3.setAttribute("stop-opacity", "0.8");
-        
-        lineGradient.appendChild(stop1);
-        lineGradient.appendChild(stop2);
-        lineGradient.appendChild(stop3);
-        defs.appendChild(lineGradient);
-        
-        // Create a pulsing animation for connections
-        const pulseAnim = document.createElementNS(svgNS, "animate");
-        pulseAnim.setAttribute("attributeName", "stroke-opacity");
-        pulseAnim.setAttribute("values", "0.5;1;0.5");
-        pulseAnim.setAttribute("dur", "3s");
-        pulseAnim.setAttribute("repeatCount", "indefinite");
-        
-        // Enhanced node glow effect
-        const nodeGlow = document.createElementNS(svgNS, "filter");
-        nodeGlow.id = "nodeGlow";
-        nodeGlow.setAttribute("x", "-50%");
-        nodeGlow.setAttribute("y", "-50%");
-        nodeGlow.setAttribute("width", "200%");
-        nodeGlow.setAttribute("height", "200%");
-        
-        // Create a multi-step glow effect for more depth
-        const feGaussianBlur1 = document.createElementNS(svgNS, "feGaussianBlur");
-        feGaussianBlur1.setAttribute("stdDeviation", "4");
-        feGaussianBlur1.setAttribute("result", "blur1");
-        
-        const feGaussianBlur2 = document.createElementNS(svgNS, "feGaussianBlur");
-        feGaussianBlur2.setAttribute("in", "SourceGraphic");
-        feGaussianBlur2.setAttribute("stdDeviation", "2");
-        feGaussianBlur2.setAttribute("result", "blur2");
-        
-        const feFlood1 = document.createElementNS(svgNS, "feFlood");
-        feFlood1.setAttribute("flood-color", "#60FFFF");
-        feFlood1.setAttribute("flood-opacity", "0.8");
-        feFlood1.setAttribute("result", "glow1");
-        
-        const feFlood2 = document.createElementNS(svgNS, "feFlood");
-        feFlood2.setAttribute("flood-color", "#80FFFF");
-        feFlood2.setAttribute("flood-opacity", "0.5");
-        feFlood2.setAttribute("result", "glow2");
-        
-        const feComposite1 = document.createElementNS(svgNS, "feComposite");
-        feComposite1.setAttribute("in", "glow1");
-        feComposite1.setAttribute("in2", "blur1");
-        feComposite1.setAttribute("operator", "in");
-        feComposite1.setAttribute("result", "coloredBlur1");
-        
-        const feComposite2 = document.createElementNS(svgNS, "feComposite");
-        feComposite2.setAttribute("in", "glow2");
-        feComposite2.setAttribute("in2", "blur2");
-        feComposite2.setAttribute("operator", "in");
-        feComposite2.setAttribute("result", "coloredBlur2");
-        
-        const feMerge = document.createElementNS(svgNS, "feMerge");
-        
-        const feMergeNode1 = document.createElementNS(svgNS, "feMergeNode");
-        feMergeNode1.setAttribute("in", "coloredBlur1");
-        
-        const feMergeNode2 = document.createElementNS(svgNS, "feMergeNode");
-        feMergeNode2.setAttribute("in", "coloredBlur2");
-        
-        const feMergeNode3 = document.createElementNS(svgNS, "feMergeNode");
-        feMergeNode3.setAttribute("in", "SourceGraphic");
-        
-        feMerge.appendChild(feMergeNode1);
-        feMerge.appendChild(feMergeNode2);
-        feMerge.appendChild(feMergeNode3);
-        
-        nodeGlow.appendChild(feGaussianBlur1);
-        nodeGlow.appendChild(feGaussianBlur2);
-        nodeGlow.appendChild(feFlood1);
-        nodeGlow.appendChild(feFlood2);
-        nodeGlow.appendChild(feComposite1);
-        nodeGlow.appendChild(feComposite2);
-        nodeGlow.appendChild(feMerge);
-        
-        defs.appendChild(nodeGlow);
-        
-        // Add text glow filter for better readability with glow effect
-        const textGlow = document.createElementNS(svgNS, "filter");
-        textGlow.id = "textGlow";
-        textGlow.setAttribute("x", "-50%");
-        textGlow.setAttribute("y", "-50%");
-        textGlow.setAttribute("width", "200%");
-        textGlow.setAttribute("height", "200%");
-        
-        const textBlur = document.createElementNS(svgNS, "feGaussianBlur");
-        textBlur.setAttribute("in", "SourceGraphic");
-        textBlur.setAttribute("stdDeviation", "1");
-        textBlur.setAttribute("result", "textBlur");
-        
-        const textFlood = document.createElementNS(svgNS, "feFlood");
-        textFlood.setAttribute("flood-color", "#80FFFF");
-        textFlood.setAttribute("flood-opacity", "0.6");
-        textFlood.setAttribute("result", "textGlowColor");
-        
-        const textComposite = document.createElementNS(svgNS, "feComposite");
-        textComposite.setAttribute("in", "textGlowColor");
-        textComposite.setAttribute("in2", "textBlur");
-        textComposite.setAttribute("operator", "in");
-        textComposite.setAttribute("result", "textColoredBlur");
-        
-        const textMerge = document.createElementNS(svgNS, "feMerge");
-        const textMergeNode1 = document.createElementNS(svgNS, "feMergeNode");
-        textMergeNode1.setAttribute("in", "textColoredBlur");
-        const textMergeNode2 = document.createElementNS(svgNS, "feMergeNode");
-        textMergeNode2.setAttribute("in", "SourceGraphic");
-        
-        textMerge.appendChild(textMergeNode1);
-        textMerge.appendChild(textMergeNode2);
-        
-        textGlow.appendChild(textBlur);
-        textGlow.appendChild(textFlood);
-        textGlow.appendChild(textComposite);
-        textGlow.appendChild(textMerge);
-        
-        defs.appendChild(textGlow);
-        
-        // Add holographic line effect
-        const linePattern = document.createElementNS(svgNS, "pattern");
-        linePattern.id = "holoLinePattern";
-        linePattern.setAttribute("patternUnits", "userSpaceOnUse");
-        linePattern.setAttribute("width", "30");
-        linePattern.setAttribute("height", "30");
-        linePattern.setAttribute("patternTransform", "rotate(45)");
-        
-        const lineRect = document.createElementNS(svgNS, "rect");
-        lineRect.setAttribute("x", "0");
-        lineRect.setAttribute("y", "0");
-        lineRect.setAttribute("width", "30");
-        lineRect.setAttribute("height", "30");
-        lineRect.setAttribute("fill", "none");
-        lineRect.setAttribute("stroke", "#40A0FF");
-        lineRect.setAttribute("stroke-width", "1");
-        lineRect.setAttribute("stroke-dasharray", "2,8");
-        
-        linePattern.appendChild(lineRect);
-        defs.appendChild(linePattern);
-        
-        svg.appendChild(defs);
-        
-        // Create the connections layer first (behind nodes)
-        const connectionsGroup = document.createElementNS(svgNS, "g");
-        connectionsGroup.setAttribute('class', 'connections-group');
-        svg.appendChild(connectionsGroup);
-        
-        // Create the nodes layer
-        const nodesGroup = document.createElementNS(svgNS, "g");
-        nodesGroup.setAttribute('class', 'nodes-group');
-        svg.appendChild(nodesGroup);
-        
-        evolutionContainer.appendChild(svg);
-        
-        // Create detail panel for selected weapon
-        const detailPanel = document.createElement('div');
-        detailPanel.className = 'evolution-detail-panel';
-        detailPanel.innerHTML = `
-            <h3 id="selectedWeaponName">Select a Weapon</h3>
-            <p id="selectedWeaponDesc">Click on a weapon to see details.</p>
-            <div class="weapon-stats">
-                <div><span>Damage:</span> <span id="selectedWeaponDamage">-</span></div>
-                <div><span>Fire Rate:</span> <span id="selectedWeaponFireRate">-</span></div>
-            </div>
-            <button id="selectWeaponBtn" class="select-weapon-btn">Select Weapon</button>
-        `;
-        evolutionContainer.appendChild(detailPanel);
-        
-        // Add the evolution container to the document body
-        document.body.appendChild(evolutionContainer);
-        
-        // Add CSS styles for the evolution UI
-        addEvolutionStyles();
-    }
-    
-    // Add CSS styles for the evolution tree UI
-    function addEvolutionStyles() {
-        const styleElement = document.createElement('style');
-        styleElement.textContent = `
-            .evolution-menu-container {
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background-color: rgba(0, 5, 20, 0.95);
-                backdrop-filter: blur(10px);
-                z-index: 100;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                padding: 20px;
-                box-sizing: border-box;
-                font-family: 'Press Start 2P', cursive;
-                color: #ffffff;
-                overflow: hidden;
-            }
-            
-            /* Particles background animation */
-            .particles-container {
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                overflow: hidden;
-                z-index: -2;
-            }
-            
-            .particle {
-                position: absolute;
-                background-color: #FFFFFF;
-                border-radius: 50%;
-                opacity: 0;
-                transform: translate3d(0, 0, 0);
-                animation: floatParticle 8s linear infinite;
-                will-change: transform, opacity;
-            }
-            
-            @keyframes floatParticle {
-                0% {
-                    transform: translate3d(0, 0, 0);
-                    opacity: 0;
-                }
-                15% {
-                    opacity: 0.3;
-                    transform: translate3d(5px, -10vh, 0);
-                }
-                85% {
-                    opacity: 0.3;
-                    transform: translate3d(90px, -90vh, 0);
-                }
-                100% {
-                    transform: translate3d(100px, -100vh, 0);
-                    opacity: 0;
-                }
-            }
-            
-            /* Background stars effect */
-            .evolution-menu-container::before {
-                content: '';
-                position: absolute;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background-image: 
-                    radial-gradient(circle at 20% 30%, rgba(61, 118, 229, 0.1) 0%, transparent 20%),
-                    radial-gradient(circle at 80% 70%, rgba(229, 61, 171, 0.1) 0%, transparent 20%);
-                z-index: -1;
-            }
-            
-            /* Grid lines effect */
-            .evolution-menu-container::after {
-                content: '';
-                position: absolute;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background-image: 
-                    linear-gradient(to right, rgba(100, 200, 255, 0.05) 1px, transparent 1px),
-                    linear-gradient(to bottom, rgba(100, 200, 255, 0.05) 1px, transparent 1px);
-                background-size: 40px 40px;
-                z-index: -1;
-            }
-            
-            .evolution-header {
-                width: 100%;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                margin-bottom: 30px;
-                padding: 0;
-                position: relative;
-            }
-            
-            .evolution-title {
-                font-size: 3rem;
-                color: #60FFFF;
-                text-shadow: 0 0 10px #60FFFF, 0 0 20px #4080FF, 0 0 30px #4080FF;
-                margin: 0;
-                letter-spacing: 4px;
-                animation: pulseTitleGlow 3s infinite;
-                text-align: center;
-                position: relative;
-                z-index: 1;
-            }
-            
-            @keyframes pulseTitleGlow {
-                0%, 100% { 
-                    text-shadow: 0 0 10px #60FFFF, 0 0 20px #4080FF;
-                    transform: translate3d(0, 0, 0);
-                }
-                50% { 
-                    text-shadow: 0 0 15px #60FFFF, 0 0 30px #4080FF, 0 0 40px #4080FF;
-                    transform: translate3d(0, 0, 0);
-                }
-            }
-            
-            .evolution-close-btn {
-                background: transparent;
-                border: 2px solid #FF60FF;
-                color: #FF60FF;
-                font-size: 1.5rem;
-                width: 50px;
-                height: 50px;
-                border-radius: 50%;
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                transition: all 0.2s ease;
-                box-shadow: 0 0 10px #FF60FF, inset 0 0 5px rgba(255, 96, 255, 0.5);
-                text-shadow: 0 0 5px #FF60FF;
-                position: absolute;
-                right: 40px;
-                top: 50%;
-                transform: translateY(-50%);
-                z-index: 2;
-            }
-            
-            .evolution-close-btn:hover {
-                background: rgba(255, 96, 255, 0.2);
-                color: #FFFFFF;
-                transform: scale(1.1);
-                box-shadow: 0 0 20px #FF60FF, inset 0 0 10px rgba(255, 96, 255, 0.7);
-            }
-            
-            .evolution-svg {
-                width: 800px;
-                height: 600px;
-                max-width: 100%;
-                background-color: rgba(0, 5, 30, 0.5);
-                border-radius: 10px;
-                border: 1px solid rgba(100, 200, 255, 0.3);
-                box-shadow: 0 0 30px rgba(60, 170, 255, 0.15);
-                overflow: visible; /* Allow glow effects to extend beyond SVG boundaries */
-                position: relative; /* For pseudo-elements */
-            }
-            
-            /* Add subtle scan line effect to the tree */
-            .evolution-svg::before {
-                content: '';
-                position: absolute;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: linear-gradient(to bottom, 
-                    transparent 0%, 
-                    rgba(100, 200, 255, 0.03) 50%, 
-                    transparent 100%);
-                background-size: 100% 4px;
-                pointer-events: none;
-                z-index: 1;
-                animation: scanEffect 8s linear infinite;
-            }
-            
-            @keyframes scanEffect {
-                0%, 100% { 
-                    transform: translate3d(0, -100%, 0);
-                    opacity: 0.02;
-                }
-                50% {
-                    transform: translate3d(0, 200%, 0);
-                    opacity: 0.03;
-                }
-            }
-            
-            .evolution-node {
-                cursor: pointer;
-                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                filter: drop-shadow(0 0 8px rgba(100, 200, 255, 0.7));
-                will-change: transform, filter;
-                transform-origin: center center;
-                transform-box: fill-box;
-            }
-            
-            .evolution-node:hover {
-                filter: drop-shadow(0 0 12px rgba(100, 240, 255, 0.9));
-            }
-            
-            .evolution-node-locked {
-                opacity: 0.5;
-                filter: grayscale(70%) drop-shadow(0 0 5px rgba(100, 200, 255, 0.3));
-            }
-            
-            .evolution-node-current {
-                filter: drop-shadow(0 0 15px rgba(255, 255, 255, 0.9));
-            }
-            
-            .evolution-connection {
-                stroke-width: 3px;
-                stroke-linecap: round;
-                opacity: 0.8;
-                transform: translate3d(0, 0, 0);
-                transition: opacity 0.3s ease;
-            }
-            
-            .evolution-connection-locked {
-                opacity: 0.3;
-                stroke-dasharray: 5, 5;
-                filter: drop-shadow(0 0 3px rgba(100, 200, 255, 0.3));
-            }
-            
-            .evolution-connection-path {
-                opacity: 1;
-                stroke-width: 4px;
-                animation: flowPath 2s linear infinite;
-                transform: translate3d(0, 0, 0);
-            }
-            
-            @keyframes flowPath {
-                0% {
-                    stroke-dashoffset: 100;
-                    opacity: 0.8;
-                }
-                100% {
-                    stroke-dashoffset: 0;
-                    opacity: 0.8;
-                }
-            }
-            
-            .holographic-ring {
-                transition: all 0.3s ease;
-                opacity: 0.7;
-            }
-            
-            .evolution-node:hover .holographic-ring {
-                opacity: 0.9;
-                stroke-width: 2px;
-            }
-            
-            .evolution-detail-panel {
-                margin-top: 0;
-                background-color: rgba(0, 10, 40, 0.7);
-                border: 2px solid rgba(100, 200, 255, 0.5);
-                border-radius: 10px;
-                padding: 15px;
-                width: 500px;
-                max-width: 90%;
-                box-shadow: 0 0 20px rgba(100, 200, 255, 0.3), inset 0 0 10px rgba(100, 200, 255, 0.1);
-                position: relative;
-                overflow: hidden;
-                text-align: center;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                transform: translateY(-40px);
-            }
-            
-            .evolution-detail-panel::before {
-                content: '';
-                position: absolute;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: 
-                    linear-gradient(90deg, transparent 0%, rgba(100, 200, 255, 0.05) 50%, transparent 100%),
-                    linear-gradient(rgba(0, 20, 80, 0.7), rgba(0, 20, 80, 0.7));
-                background-size: 200% 100%, 100% 100%;
-                animation: scanLine 6s linear infinite;
-                pointer-events: none;
-                z-index: -1;
-            }
-            
-            @keyframes scanLine {
-                0% { 
-                    background-position: -200% 0, 0 0;
-                    opacity: 0.03;
-                }
-                50% {
-                    opacity: 0.05;
-                }
-                100% { 
-                    background-position: 200% 0, 0 0;
-                    opacity: 0.03;
-                }
-            }
-            
-            .evolution-detail-panel h3 {
-                color: #80FFFF;
-                margin: 0 auto;
-                margin-bottom: 15px;
-                font-size: 1.5rem;
-                text-shadow: 0 0 8px #60FFFF;
-                position: relative;
-                display: inline-block;
-                font-family: 'Press Start 2P', cursive;
-                letter-spacing: 2px;
-                padding: 0 10px;
-            }
-            
-            .evolution-detail-panel h3::after {
-                content: '';
-                position: absolute;
-                bottom: -5px;
-                left: 50%;
-                transform: translateX(-50%);
-                width: 120%;
-                height: 2px;
-                background: linear-gradient(90deg, transparent, #60FFFF, transparent);
-                border-radius: 1px;
-            }
-            
-            .evolution-detail-panel p {
-                color: #FFFFFF;
-                margin-bottom: 25px;
-                font-size: 0.9rem;
-                line-height: 1.6;
-                text-shadow: 0 0 2px rgba(255, 255, 255, 0.8);
-            }
-            
-            .weapon-stats {
-                display: flex;
-                justify-content: space-between;
-                margin-bottom: 25px;
-                font-size: 0.8rem;
-                gap: 20px;
-            }
-            
-            .weapon-stats div {
-                flex: 1;
-                background-color: rgba(0, 20, 80, 0.5);
-                padding: 15px;
-                border-radius: 6px;
-                border: 1px solid rgba(100, 200, 255, 0.3);
-                box-shadow: 0 0 10px rgba(100, 200, 255, 0.1), inset 0 0 5px rgba(100, 200, 255, 0.05);
-                position: relative;
-                overflow: hidden;
-            }
-            
-            .weapon-stats div::after {
-                content: '';
-                position: absolute;
-                top: 0;
-                left: -100%;
-                width: 50%;
-                height: 100%;
-                background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-                animation: statsScan 3s infinite;
-            }
-            
-            @keyframes statsScan {
-                0% { 
-                    left: -100%;
-                    opacity: 0;
-                }
-                25% {
-                    opacity: 0.1;
-                }
-                75% {
-                    opacity: 0.1;
-                }
-                100% { 
-                    left: 200%;
-                    opacity: 0;
-                }
-            }
-            
-            .weapon-stats div span:first-child {
-                color: #60FFFF;
-                margin-right: 8px;
-                text-shadow: 0 0 5px rgba(96, 255, 255, 0.8);
-            }
-            
-            .weapon-stats div span:last-child {
-                color: #FFFFFF;
-                text-shadow: 0 0 3px rgba(255, 255, 255, 0.8);
-            }
-            
-            .select-weapon-btn {
-                background: linear-gradient(135deg, #2070FF, #40FFFF);
-                border: none;
-                padding: 15px 0;
-                width: 100%;
-                border-radius: 8px;
-                color: #FFFFFF;
-                font-family: 'Press Start 2P', cursive;
-                font-size: 1rem;
-                cursor: pointer;
-                transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-                will-change: transform, box-shadow, background;
-                box-shadow: 0 0 15px rgba(64, 255, 255, 0.5), inset 0 0 5px rgba(255, 255, 255, 0.5);
-                text-shadow: 0 0 5px rgba(255, 255, 255, 0.8);
-                position: relative;
-                overflow: hidden;
-            }
-            
-            .select-weapon-btn::after {
-                content: '';
-                position: absolute;
-                top: -50%;
-                left: -50%;
-                width: 200%;
-                height: 200%;
-                background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-                transform: rotate(45deg);
-                animation: buttonShine 3s infinite;
-            }
-            
-            @keyframes buttonShine {
-                0% { 
-                    left: -50%;
-                    top: -50%;
-                    opacity: 0;
-                }
-                25% {
-                    opacity: 0.1;
-                }
-                75% {
-                    opacity: 0.1;
-                }
-                100% { 
-                    left: 100%;
-                    top: 100%;
-                    opacity: 0;
-                }
-            }
-            
-            .select-weapon-btn:hover {
-                transform: scale(1.05);
-                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                box-shadow: 0 0 25px rgba(64, 255, 255, 0.7), inset 0 0 10px rgba(255, 255, 255, 0.7);
-                background: linear-gradient(135deg, #3080FF, #60FFFF);
-            }
-            
-            .select-weapon-btn:disabled {
-                background: linear-gradient(135deg, #404040, #707070);
-                cursor: not-allowed;
-                opacity: 0.5;
-                transform: scale(1);
-                box-shadow: 0 0 10px rgba(100, 100, 100, 0.5);
-            }
-            
-            .select-weapon-btn:disabled::after {
-                display: none;
-            }
-            
-            .weapon-icon {
-                fill: #FFFFFF;
-                filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.8));
-            }
-            
-            @keyframes holoEffect {
-                0% { 
-                    opacity: 0.7;
-                    filter: brightness(0.9) drop-shadow(0 0 5px rgba(100, 200, 255, 0.7));
-                    transform: scale(1);
-                }
-                25% {
-                    opacity: 0.85;
-                    filter: brightness(1.0) drop-shadow(0 0 7px rgba(100, 200, 255, 0.8));
-                    transform: scale(1.02);
-                }
-                50% { 
-                    opacity: 1;
-                    filter: brightness(1.1) drop-shadow(0 0 10px rgba(100, 200, 255, 0.9));
-                    transform: scale(1.05);
-                }
-                75% {
-                    opacity: 0.85;
-                    filter: brightness(1.0) drop-shadow(0 0 7px rgba(100, 200, 255, 0.8));
-                    transform: scale(1.02);
-                }
-                100% { 
-                    opacity: 0.7;
-                    filter: brightness(0.9) drop-shadow(0 0 5px rgba(100, 200, 255, 0.7));
-                    transform: scale(1);
-                }
-            }
-            
-            .holographic-effect {
-                animation: holoEffect 3s infinite;
-            }
-            
-            @keyframes fadeIn {
-                from { opacity: 0; transform: scale(0.98); }
-                to { opacity: 1; transform: scale(1); }
-            }
-            
-            @keyframes fadeOut {
-                from { opacity: 1; transform: scale(1); }
-                to { opacity: 0; transform: scale(0.98); }
-            }
-            
-            .score-requirement {
-                opacity: 0.8;
-                transition: opacity 0.3s ease;
-                text-shadow: 0 0 5px #FF60FF;
-            }
-            
-            .evolution-node:hover .score-requirement {
-                opacity: 1;
-            }
-            
-            .weapon-tooltip {
-                transition: opacity 0.2s ease-in-out;
-                filter: drop-shadow(0 0 10px rgba(96, 255, 255, 0.3));
-            }
-            
-            .weapon-tooltip rect {
-                transition: all 0.2s ease-in-out;
-            }
-            
-            .evolution-node:hover .weapon-tooltip rect {
-                stroke-width: 2;
-                filter: drop-shadow(0 0 5px rgba(96, 255, 255, 0.5));
-            }
-        `;
-        document.head.appendChild(styleElement);
-    }
-    
-    // Render the evolution tree
-    function renderEvolutionTree() {
-        const connectionsGroup = svg.querySelector('.connections-group');
-        const nodesGroup = svg.querySelector('.nodes-group');
-        
-        // Clear existing elements
-        connectionsGroup.innerHTML = '';
-        nodesGroup.innerHTML = '';
-        nodeElements.clear();
-        lineElements.clear();
-
-        // Draw connections first (behind nodes)
-        evolutionTree.connections.forEach((connection, index) => {
-            const fromWeapon = evolutionTree.getWeapon(connection.from);
-            const toWeapon = evolutionTree.getWeapon(connection.to);
-            
-            if (fromWeapon && toWeapon) {
-                const fromPos = evolutionTree.positions[connection.from];
-                const toPos = evolutionTree.positions[connection.to];
-                
-                if (fromPos && toPos) {
-                    const x1 = CENTER_X + fromPos.x * GRID_SIZE_X;
-                    const y1 = CENTER_Y - fromPos.y * GRID_SIZE_Y;
-                    const x2 = CENTER_X + toPos.x * GRID_SIZE_X;
-                    const y2 = CENTER_Y - toPos.y * GRID_SIZE_Y;
-                    
-                    // Create connection line with enhanced styling
-                    const line = document.createElementNS(svgNS, "path");
-                    const midX = (x1 + x2) / 2;
-                    const midY = (y1 + y2) / 2 - 20;
-                    const pathData = `M ${x1} ${y1} Q ${midX} ${midY} ${x2} ${y2}`;
-                    
-                    line.setAttribute("d", pathData);
-                    line.setAttribute("fill", "none");
-                    line.setAttribute("stroke", fromWeapon.lineColor || "#60FFFF");
-                    line.setAttribute("stroke-width", "3");
-                    line.setAttribute("class", `evolution-connection ${!fromWeapon.unlocked || !toWeapon.unlocked ? 'evolution-connection-locked' : ''}`);
-                    
-                    const connectionKey = `${connection.from}-${connection.to}`;
-                    lineElements.set(connectionKey, line);
-                    
-                    connectionsGroup.appendChild(line);
-                }
-            }
-        });
-
-        // Draw nodes with consistent styling
-        Object.keys(evolutionTree.positions).forEach((weaponId, index) => {
-            const weapon = evolutionTree.getWeapon(weaponId);
-            const pos = evolutionTree.positions[weaponId];
-            
-            if (weapon && pos) {
-                const x = CENTER_X + pos.x * GRID_SIZE_X;
-                const y = CENTER_Y - pos.y * GRID_SIZE_Y;
-                
-                const nodeGroup = document.createElementNS(svgNS, "g");
-                nodeGroup.setAttribute("id", `node-${weaponId}-${index}`);
-                nodeGroup.setAttribute("class", `evolution-node ${!weapon.unlocked ? 'evolution-node-locked' : ''} ${weaponId === currentWeaponId ? 'evolution-node-current' : ''}`);
-                nodeGroup.setAttribute("data-weapon-id", weaponId);
-                
-                // Set initial position with transform
-                const baseTransform = `translate(${x}, ${y})`;
-                nodeGroup.setAttribute("transform", baseTransform);
-                nodeGroup.setAttribute("data-base-transform", baseTransform);
-
-                // Create node background with consistent glow
-                const nodeFilterId = `node-glow-${weaponId}-${index}`;
-                const glowFilter = document.getElementById("nodeGlow").cloneNode(true);
-                glowFilter.id = nodeFilterId;
-                svg.querySelector("defs").appendChild(glowFilter);
-                
-                if (weapon.unlocked) {
-                    nodeGroup.setAttribute("filter", `url(#${nodeFilterId})`);
-                }
-
-                // Create circular background with consistent styling
-                const circle = document.createElementNS(svgNS, "circle");
-                circle.setAttribute("r", NODE_RADIUS);
-                circle.setAttribute("fill", weapon.color || "#4080FF");
-                circle.setAttribute("class", "holographic-effect");
-                
-                // Add outer glow ring
-                const outerRing = document.createElementNS(svgNS, "circle");
-                outerRing.setAttribute("r", NODE_RADIUS + 3);
-                outerRing.setAttribute("fill", "none");
-                outerRing.setAttribute("stroke", weapon.lineColor || "#60FFFF");
-                outerRing.setAttribute("stroke-width", "1.5");
-                outerRing.setAttribute("opacity", "0.7");
-                
-                // Create inner circle for depth effect
-                const innerCircle = document.createElementNS(svgNS, "circle");
-                innerCircle.setAttribute("r", NODE_RADIUS * 0.85);
-                innerCircle.setAttribute("fill", shadeColor(weapon.color || "#4080FF", -20));
-
-                // Add rotating holographic rings for all nodes
-                const rotationAnimId1 = `rot-${weaponId}-1-${index}`;
-                const rotationAnimId2 = `rot-${weaponId}-2-${index}`;
-                
-                // First ring with animation
-                const holoRing1 = document.createElementNS(svgNS, "circle");
-                holoRing1.setAttribute("r", NODE_RADIUS * 1.2);
-                holoRing1.setAttribute("fill", "none");
-                holoRing1.setAttribute("stroke", weapon.lineColor || "#60FFFF");
-                holoRing1.setAttribute("stroke-dasharray", "3,10");
-                holoRing1.setAttribute("class", "holographic-ring");
-                
-                const animateTransform1 = document.createElementNS(svgNS, "animateTransform");
-                animateTransform1.setAttribute("id", rotationAnimId1);
-                animateTransform1.setAttribute("attributeName", "transform");
-                animateTransform1.setAttribute("type", "rotate");
-                animateTransform1.setAttribute("from", "0 0 0");
-                animateTransform1.setAttribute("to", "360 0 0");
-                animateTransform1.setAttribute("dur", "10s");
-                animateTransform1.setAttribute("repeatCount", "indefinite");
-                holoRing1.appendChild(animateTransform1);
-                
-                // Second ring with opposite rotation
-                const holoRing2 = document.createElementNS(svgNS, "circle");
-                holoRing2.setAttribute("r", NODE_RADIUS * 1.3);
-                holoRing2.setAttribute("fill", "none");
-                holoRing2.setAttribute("stroke", shadeColor(weapon.lineColor || "#60FFFF", 20));
-                holoRing2.setAttribute("stroke-dasharray", "7,7");
-                holoRing2.setAttribute("class", "holographic-ring");
-                
-                const animateTransform2 = document.createElementNS(svgNS, "animateTransform");
-                animateTransform2.setAttribute("id", rotationAnimId2);
-                animateTransform2.setAttribute("attributeName", "transform");
-                animateTransform2.setAttribute("type", "rotate");
-                animateTransform2.setAttribute("from", "360 0 0");
-                animateTransform2.setAttribute("to", "0 0 0");
-                animateTransform2.setAttribute("dur", "15s");
-                animateTransform2.setAttribute("repeatCount", "indefinite");
-                holoRing2.appendChild(animateTransform2);
-
-                nodeGroup.appendChild(holoRing1);
-                nodeGroup.appendChild(holoRing2);
-
-                // Add weapon icon with consistent styling
-                const iconGroup = document.createElementNS(svgNS, "g");
-                iconGroup.setAttribute("transform", "translate(-15, -15)");
-                const iconKey = weapon.icon || 'planeBasic';
-                const iconSvg = planeIcons[iconKey] || planeIcons.planeBasic;
-                iconGroup.innerHTML = iconSvg;
-                
-                // Add label with consistent styling
-                const label = document.createElementNS(svgNS, "text");
-                label.setAttribute("text-anchor", "middle");
-                label.setAttribute("dominant-baseline", "middle");
-                label.setAttribute("y", NODE_RADIUS + 22);
-                label.setAttribute("font-size", "13");
-                label.setAttribute("font-weight", "bold");
-                label.setAttribute("fill", "#FFFFFF");
-                label.setAttribute("class", "node-label");
-                label.setAttribute("filter", "url(#textGlow)");
-                label.textContent = weapon.name;
-
-                // Add score requirement label for locked weapons
-                if (!weapon.unlocked && weapon.requirements?.score) {
-                    const scoreLabel = document.createElementNS(svgNS, "text");
-                    scoreLabel.setAttribute("text-anchor", "middle");
-                    scoreLabel.setAttribute("dominant-baseline", "middle");
-                    scoreLabel.setAttribute("y", NODE_RADIUS + 40);
-                    scoreLabel.setAttribute("font-size", "11");
-                    scoreLabel.setAttribute("fill", "#FF60FF");
-                    scoreLabel.setAttribute("class", "score-requirement");
-                    scoreLabel.setAttribute("filter", "url(#textGlow)");
-                    scoreLabel.textContent = `Score: ${weapon.requirements.score}`;
-                    nodeGroup.appendChild(scoreLabel);
-                }
-
-                // Add hover tooltip for locked weapons
-                if (!weapon.unlocked && weapon.requirements?.score) {
-                    const tooltip = document.createElementNS(svgNS, "g");
-                    tooltip.setAttribute("class", "weapon-tooltip");
-                    tooltip.style.opacity = "0";
-                    tooltip.style.pointerEvents = "none";
-                    
-                    const tooltipBg = document.createElementNS(svgNS, "rect");
-                    tooltipBg.setAttribute("x", "-100");
-                    tooltipBg.setAttribute("y", "-80");
-                    tooltipBg.setAttribute("width", "200");
-                    tooltipBg.setAttribute("height", "40");
-                    tooltipBg.setAttribute("rx", "5");
-                    tooltipBg.setAttribute("ry", "5");
-                    tooltipBg.setAttribute("fill", "rgba(0, 10, 30, 0.9)");
-                    tooltipBg.setAttribute("stroke", "#60FFFF");
-                    tooltipBg.setAttribute("stroke-width", "1");
-                    
-                    const tooltipText = document.createElementNS(svgNS, "text");
-                    tooltipText.setAttribute("text-anchor", "middle");
-                    tooltipText.setAttribute("y", "-55");
-                    tooltipText.setAttribute("font-size", "12");
-                    tooltipText.setAttribute("fill", "#FFFFFF");
-                    tooltipText.setAttribute("filter", "url(#textGlow)");
-                    const currentScore = uiSystem.getScore();
-                    tooltipText.textContent = `Progress: ${currentScore}/${weapon.requirements.score}`;
-                    
-                    tooltip.appendChild(tooltipBg);
-                    tooltip.appendChild(tooltipText);
-                    nodeGroup.appendChild(tooltip);
-                }
-
-                // Add hover handlers with consistent behavior
-                nodeGroup.addEventListener("mouseenter", (event) => {
-                    const baseTransform = nodeGroup.getAttribute("data-base-transform");
-                    nodeGroup.setAttribute("transform", `${baseTransform} scale(1.1)`);
-                    
-                    // Enhance glow effect on hover
-                    const glowFilter = document.getElementById(nodeFilterId);
-                    if (glowFilter) {
-                        const blurElement = glowFilter.querySelector("feGaussianBlur");
-                        if (blurElement) {
-                            blurElement.setAttribute("stdDeviation", "5");
-                        }
-                    }
-                    
-                    // Show tooltip if weapon is locked
-                    const tooltip = nodeGroup.querySelector(".weapon-tooltip");
-                    if (tooltip) {
-                        tooltip.style.opacity = "1";
-                        tooltip.style.transition = "opacity 0.2s ease-in-out";
-                    }
-                });
-                
-                nodeGroup.addEventListener("mouseleave", (event) => {
-                    const baseTransform = nodeGroup.getAttribute("data-base-transform");
-                    nodeGroup.setAttribute("transform", baseTransform);
-                    
-                    // Restore normal glow
-                    const glowFilter = document.getElementById(nodeFilterId);
-                    if (glowFilter) {
-                        const blurElement = glowFilter.querySelector("feGaussianBlur");
-                        if (blurElement) {
-                            blurElement.setAttribute("stdDeviation", "3");
-                        }
-                    }
-                    
-                    // Hide tooltip
-                    const tooltip = nodeGroup.querySelector(".weapon-tooltip");
-                    if (tooltip) {
-                        tooltip.style.opacity = "0";
-                    }
-                });
-
-                // Add click handler
-                nodeGroup.addEventListener("click", () => selectWeapon(weaponId));
-                
-                // Add elements in proper layering order
-                nodeGroup.appendChild(outerRing);
-                nodeGroup.appendChild(circle);
-                nodeGroup.appendChild(innerCircle);
-                nodeGroup.appendChild(iconGroup);
-                nodeGroup.appendChild(label);
-                
-                nodeElements.set(weaponId, nodeGroup);
-                nodesGroup.appendChild(nodeGroup);
-            }
-        });
-
-        // Update selected path
-        updateSelectedPath();
-    }
-    
-    // Helper function to darken or lighten colors
-    function shadeColor(color, percent) {
-        let R = parseInt(color.substring(1, 3), 16);
-        let G = parseInt(color.substring(3, 5), 16);
-        let B = parseInt(color.substring(5, 7), 16);
-
-        R = Math.min(255, Math.max(0, R + percent));
-        G = Math.min(255, Math.max(0, G + percent));
-        B = Math.min(255, Math.max(0, B + percent));
-
-        const RR = ((R.toString(16).length === 1) ? "0" + R.toString(16) : R.toString(16));
-        const GG = ((G.toString(16).length === 1) ? "0" + G.toString(16) : G.toString(16));
-        const BB = ((B.toString(16).length === 1) ? "0" + B.toString(16) : B.toString(16));
-
-        return "#" + RR + GG + BB;
-    }
-    
-    // Update the selected path in the tree
-    function updateSelectedPath() {
-        lineElements.forEach(line => {
-            line.style.transition = 'opacity 0.2s ease';
-            line.classList.remove('evolution-connection-path');
-        });
-        
-        selectedPath.forEach(segment => {
-            const connectionKey = `${segment.from}-${segment.to}`;
-            const reversedKey = `${segment.to}-${segment.from}`;
-            
-            const line = lineElements.get(connectionKey) || lineElements.get(reversedKey);
-            if (line) {
-                requestAnimationFrame(() => {
-                    line.classList.add('evolution-connection-path');
-                });
-            }
-        });
-    }
-    
-    // Handle weapon selection in the tree
-    function selectWeapon(weaponId) {
-        const weapon = evolutionTree.getWeapon(weaponId);
-        if (!weapon) return;
-        
-        // Update detail panel with weapon info
-        document.getElementById('selectedWeaponName').textContent = weapon.name;
-        document.getElementById('selectedWeaponDesc').textContent = weapon.description;
-        document.getElementById('selectedWeaponDamage').textContent = weapon.damage;
-        document.getElementById('selectedWeaponFireRate').textContent = weapon.fireRate.toFixed(1);
-        
-        // Enable/disable select button based on unlock status
-        const selectButton = document.getElementById('selectWeaponBtn');
-        selectButton.disabled = !weapon.unlocked;
-        
-        if (weapon.unlocked) {
-            selectButton.textContent = weaponId === currentWeaponId ? "Current Weapon" : "Select Weapon";
-            selectButton.onclick = () => {
-                if (weaponId !== currentWeaponId) {
-                    setCurrentWeapon(weaponId);
-                    toggleEvolutionMenu();
-                }
-            };
-        } else {
-            // Show requirements and current progress if locked
-            const reqScore = weapon.requirements?.score || 0;
-            const currentScore = uiSystem.getScore();
-            selectButton.textContent = `Locked (Score: ${currentScore}/${reqScore})`;
-        }
-        
-        // Set the selected path (visual trail from current to selected)
-        if (weaponId !== currentWeaponId) {
-            selectedPath = evolutionTree.getPath(currentWeaponId, weaponId);
-            updateSelectedPath();
-        } else {
-            selectedPath = [];
-            updateSelectedPath();
-        }
-        
-        // Play selection sound
-        if (audioSystem.menuSynth) {
-            audioSystem.playSound(audioSystem.menuSynth, "C5", "32n");
-        } else {
-            audioSystem.playSound(audioSystem.flamethrowerSynth, "C5", "32n");
-        }
-    }
-    
-    // Set the current weapon
-    function setCurrentWeapon(weaponId) {
-        const weapon = evolutionTree.getWeapon(weaponId);
-        if (!weapon || !weapon.unlocked) return false;
-        
-        // Remove current class from previous weapon node
-        const previousNode = nodeElements.get(currentWeaponId);
-        if (previousNode) {
-            previousNode.classList.remove('evolution-node-current');
-        }
-        
-        // Update current weapon
-        currentWeaponId = weaponId;
-        
-        // Add current class to new weapon node
-        const currentNode = nodeElements.get(currentWeaponId);
-        if (currentNode) {
-            currentNode.classList.add('evolution-node-current');
-        }
-        
-        // Play upgrade sound
-        if (audioSystem.spreadSynth) {
-            audioSystem.playSound(audioSystem.spreadSynth, ["C4", "E4", "G4"], "8n");
-        } else {
-            audioSystem.playSound(audioSystem.flamethrowerSynth, ["C4", "E4", "G4"], "8n");
-        }
-        
-        // Return the weapon object for external use
-        return weapon;
-    }
-    
-    // Check for new weapon unlocks based on score
-    function checkWeaponUnlocks(score) {
-        const unlockableWeapons = evolutionTree.getUnlockableWeapons(score);
-        let hasNewUnlocks = false;
-        
-        unlockableWeapons.forEach(weapon => {
-            evolutionTree.unlockWeapon(weapon.id);
-            hasNewUnlocks = true;
-            
-            // Update visual state in the tree if it's open
-            if (isEvolutionMenuOpen) {
-                const node = nodeElements.get(weapon.id);
-                if (node) {
-                    node.classList.remove('evolution-node-locked');
-                    node.setAttribute("filter", "url(#nodeGlow)");
-                }
-                
-                // Update connections
-                evolutionTree.connections.forEach(connection => {
-                    if (connection.from === weapon.id || connection.to === weapon.id) {
-                        const fromWeapon = evolutionTree.getWeapon(connection.from);
-                        const toWeapon = evolutionTree.getWeapon(connection.to);
-                        
-                        if (fromWeapon.unlocked && toWeapon.unlocked) {
-                            const connectionKey = `${connection.from}-${connection.to}`;
-                            const line = lineElements.get(connectionKey);
-                            if (line) {
-                                line.classList.remove('evolution-connection-locked');
-                            }
-                        }
-                    }
-                });
-            }
-        });
-        
-        return hasNewUnlocks;
     }
     
     // Toggle the evolution menu
     function toggleEvolutionMenu() {
-        if (isEvolutionMenuOpen) {
-            evolutionContainer.style.transition = 'opacity 0.2s ease-out, transform 0.2s ease-out';
-            evolutionContainer.style.opacity = '0';
-            evolutionContainer.style.transform = 'translate3d(0, -10px, 0)';
-            setTimeout(() => {
-                evolutionContainer.style.display = 'none';
-                document.getElementById('gameCanvas')?.requestPointerLock?.();
-            }, 200);
-            isEvolutionMenuOpen = false;
-        } else {
-            if (document.pointerLockElement) {
-                document.exitPointerLock?.();
-            }
+        // Initialize UI elements if they haven't been created yet
+        if (!evolutionContainer) {
+            init();
+        }
+        
+        isMenuOpen = !isMenuOpen;
+        evolutionContainer.style.display = isMenuOpen ? 'flex' : 'none';
+        
+        if (isMenuOpen) {
+            document.body.classList.add('evolution-menu-open');
             renderEvolutionTree();
-            evolutionContainer.style.display = 'flex';
-            evolutionContainer.style.opacity = '0';
-            evolutionContainer.style.transform = 'translate3d(0, 10px, 0)';
-            requestAnimationFrame(() => {
-                evolutionContainer.style.transition = 'opacity 0.2s ease-out, transform 0.2s ease-out';
-                evolutionContainer.style.opacity = '1';
-                evolutionContainer.style.transform = 'translate3d(0, 0, 0)';
-            });
-            selectWeapon(currentWeaponId);
-            isEvolutionMenuOpen = true;
+            // Exit pointer lock when menu is opened
+            document.exitPointerLock?.();
+        } else {
+            document.body.classList.remove('evolution-menu-open');
+            // Request pointer lock when menu is closed
+            const canvas = document.getElementById('gameCanvas');
+            canvas?.requestPointerLock?.();
         }
         
         // Play menu toggle sound effect
@@ -1294,41 +257,546 @@ const evolutionUI = (() => {
         }
     }
     
-    // Get the current weapon ID
-    function getCurrentWeaponId() {
-        return currentWeaponId;
-    }
-    
-    // Get the current weapon object
-    function getCurrentWeapon() {
-        return evolutionTree.getWeapon(currentWeaponId);
-    }
-    
-    // Setup event listeners
-    function setupEventListeners() {
-        // Add keyboard shortcut for evolution menu (E key)
-        document.addEventListener('keydown', (e) => {
-            if (e.key.toLowerCase() === 'e' && !document.querySelector('.game-over-overlay')?.style.display !== 'none') {
-                toggleEvolutionMenu();
+    // Add CSS styles for the evolution UI
+    function addEvolutionStyles() {
+        const style = document.createElement('style');
+        style.textContent = `
+            .node {
+                cursor: pointer;
+                transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             }
             
-            // Close evolution menu with Escape key
-            if (e.key === 'Escape' && isEvolutionMenuOpen) {
-                toggleEvolutionMenu();
+            .node circle {
+                transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                stroke: rgba(255, 255, 255, 0.4);
+                stroke-width: 3px;
+                filter: drop-shadow(0 0 10px rgba(0, 150, 255, 0.3));
+            }
+            
+            .node .icon-container {
+                transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            }
+            
+            .node .icon-container svg {
+                transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                opacity: 0.95;
+            }
+            
+            .node:hover circle {
+                r: ${NODE_RADIUS * 1.15};
+                stroke: rgba(255, 255, 255, 0.9);
+                stroke-width: 4px;
+                filter: drop-shadow(0 0 15px rgba(0, 150, 255, 0.5));
+            }
+            
+            .node:hover .icon-container {
+                transform: translate(${-NODE_RADIUS/2}, ${-NODE_RADIUS/2}) scale(1.15);
+            }
+            
+            .node:hover .icon-container svg {
+                opacity: 1;
+                filter: url(#iconGlow) brightness(1.3);
+            }
+            
+            .node-label {
+                font-family: 'Press Start 2P', monospace;
+                font-size: 13px;
+                transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                opacity: 0.85;
+                fill: #FFFFFF;
+                text-shadow: 0 0 10px rgba(0, 150, 255, 0.6);
+            }
+            
+            .node:hover .node-label {
+                font-size: 14px;
+                opacity: 1;
+                fill: #40FFFF;
+                filter: drop-shadow(0 0 8px rgba(64, 255, 255, 0.8));
+            }
+            
+            .node.selected circle {
+                stroke: #40FFFF;
+                stroke-width: 4px;
+                filter: url(#nodeGlow) brightness(1.3);
+            }
+            
+            .node.selected .icon-container svg {
+                opacity: 1;
+                filter: url(#iconGlow) brightness(1.3);
+            }
+
+            .evolution-detail-panel {
+                position: absolute;
+                bottom: 50px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: auto;
+                min-width: 450px;
+                max-width: 650px;
+                padding: 35px;
+                background: linear-gradient(135deg, rgba(0, 15, 45, 0.97), rgba(0, 8, 25, 0.97));
+                border: 2px solid rgba(100, 200, 255, 0.6);
+                border-radius: 20px;
+                box-shadow: 0 0 50px rgba(100, 200, 255, 0.35),
+                           inset 0 0 30px rgba(100, 200, 255, 0.15);
+                backdrop-filter: blur(10px);
+                transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                z-index: 1000;
+            }
+            
+            .info-close-btn {
+                background: none;
+                border: 2.5px solid #FF60FF;
+                color: #FF60FF;
+                width: 35px;
+                height: 35px;
+                border-radius: 50%;
+                font-size: 22px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                box-shadow: 0 0 20px rgba(255, 96, 255, 0.45);
+                text-shadow: 0 0 8px rgba(255, 96, 255, 0.8);
+            }
+            
+            .info-close-btn:hover {
+                background: rgba(255, 96, 255, 0.25);
+                box-shadow: 0 0 30px rgba(255, 96, 255, 0.7);
+                transform: scale(1.15);
+            }
+            
+            .info-panel-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 25px;
+                padding-bottom: 15px;
+                border-bottom: 2px solid rgba(64, 255, 255, 0.2);
+            }
+            
+            .info-panel-header h3 {
+                margin: 0;
+                color: #40FFFF;
+                font-size: 26px;
+                text-shadow: 0 0 15px rgba(64, 255, 255, 0.7);
+                letter-spacing: 1px;
+            }
+
+            .weapon-description {
+                color: rgba(255, 255, 255, 0.9);
+                font-size: 14px;
+                line-height: 1.6;
+                margin: 20px 0;
+                text-shadow: 0 0 10px rgba(100, 200, 255, 0.4);
+            }
+
+            .weapon-stats {
+                display: flex;
+                justify-content: space-around;
+                margin: 25px 0;
+                padding: 20px;
+                background: rgba(0, 20, 60, 0.4);
+                border-radius: 15px;
+                border: 1px solid rgba(100, 200, 255, 0.3);
+            }
+
+            .stat-box {
+                text-align: center;
+                padding: 15px 25px;
+                background: rgba(0, 30, 80, 0.4);
+                border-radius: 12px;
+                border: 1px solid rgba(100, 200, 255, 0.2);
+                transition: all 0.3s ease;
+            }
+
+            .stat-box:hover {
+                transform: translateY(-3px);
+                box-shadow: 0 5px 15px rgba(0, 150, 255, 0.2);
+            }
+
+            .stat-box h4 {
+                color: #40FFFF;
+                margin: 0 0 10px 0;
+                font-size: 14px;
+                text-shadow: 0 0 8px rgba(64, 255, 255, 0.6);
+            }
+
+            .stat-box p {
+                color: white;
+                margin: 0;
+                font-size: 18px;
+                text-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+            }
+
+            .requirements {
+                margin: 20px 0;
+                padding: 15px;
+                background: rgba(255, 96, 96, 0.1);
+                border-radius: 10px;
+                border: 1px solid rgba(255, 96, 96, 0.3);
+            }
+
+            .requirements p {
+                color: #FF6060;
+                margin: 0;
+                font-size: 14px;
+                text-shadow: 0 0 8px rgba(255, 96, 96, 0.4);
+            }
+
+            .select-weapon-btn {
+                width: 100%;
+                padding: 15px;
+                margin-top: 20px;
+                background: linear-gradient(135deg, #40FFFF 0%, #2080FF 100%);
+                border: none;
+                border-radius: 10px;
+                color: white;
+                font-family: 'Press Start 2P', monospace;
+                font-size: 14px;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                text-shadow: 0 0 8px rgba(0, 0, 0, 0.4);
+                box-shadow: 0 0 20px rgba(64, 255, 255, 0.4);
+            }
+
+            .select-weapon-btn:hover:not([disabled]) {
+                transform: translateY(-2px);
+                box-shadow: 0 0 30px rgba(64, 255, 255, 0.6);
+            }
+
+            .select-weapon-btn[disabled] {
+                background: linear-gradient(135deg, #808080 0%, #404040 100%);
+                cursor: not-allowed;
+                opacity: 0.7;
+            }
+
+            @keyframes pulseTitleGlow {
+                0% { text-shadow: 0 0 20px rgba(64, 255, 255, 0.8), 0 0 40px rgba(64, 255, 255, 0.4); }
+                50% { text-shadow: 0 0 30px rgba(64, 255, 255, 0.9), 0 0 60px rgba(64, 255, 255, 0.6); }
+                100% { text-shadow: 0 0 20px rgba(64, 255, 255, 0.8), 0 0 40px rgba(64, 255, 255, 0.4); }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    // Update the evolution tree data
+    function updateEvolutionTreeData(data) {
+        evolutionTreeData = data;
+        renderEvolutionTree();
+    }
+    
+    // Render the evolution tree
+    function renderEvolutionTree() {
+        if (!evolutionContainer || !svg || !evolutionTreeData) return;
+
+        // Clear existing nodes and lines
+        while (svg.firstChild) {
+            svg.removeChild(svg.firstChild);
+        }
+        nodeElements.clear();
+        lineElements.clear();
+        
+        // Render nodes
+        Object.values(weaponTypes).forEach(weapon => {
+            const position = evolutionTreeData.positions[weapon.id];
+            if (position) {
+                const nodeElement = createNodeElement(weapon, position);
+                svg.appendChild(nodeElement);
+                nodeElements.set(weapon.id, nodeElement);
+            }
+        });
+        
+        // Render lines
+        evolutionTreeData.connections.forEach(connection => {
+            const fromWeapon = weaponTypes[connection.from];
+            const toWeapon = weaponTypes[connection.to];
+            const fromPos = evolutionTreeData.positions[connection.from];
+            const toPos = evolutionTreeData.positions[connection.to];
+            
+            if (fromWeapon && toWeapon && fromPos && toPos) {
+                const lineElement = createLineElement(fromPos, toPos);
+                svg.appendChild(lineElement);
+                lineElements.set(`${connection.from}-${connection.to}`, lineElement);
             }
         });
     }
     
-    // Public API
+    // Create a node element
+    function createNodeElement(weapon, position) {
+        const g = document.createElementNS(svgNS, "g");
+        g.setAttribute('class', 'node');
+        g.setAttribute('transform', `translate(${position.x * GRID_SIZE_X + CENTER_X}, ${position.y * GRID_SIZE_Y + CENTER_Y})`);
+        g.setAttribute('data-weapon-id', weapon.id);
+
+        // Create background circle
+        const circle = document.createElementNS(svgNS, "circle");
+        circle.setAttribute('r', NODE_RADIUS);
+        circle.setAttribute('fill', weapon.color);
+        circle.setAttribute('filter', 'url(#nodeGlow)');
+        g.appendChild(circle);
+
+        // Create icon container
+        const iconContainer = document.createElementNS(svgNS, "g");
+        iconContainer.setAttribute('class', 'icon-container');
+        iconContainer.setAttribute('transform', `translate(${-NODE_RADIUS/2}, ${-NODE_RADIUS/2})`);
+
+        // Get the icon SVG from planeIcons
+        const iconKey = `plane${weapon.icon.charAt(0).toUpperCase() + weapon.icon.slice(1)}`;
+        if (planeIcons[iconKey]) {
+            // Parse the SVG string into a document
+            const parser = new DOMParser();
+            const iconDoc = parser.parseFromString(planeIcons[iconKey], 'image/svg+xml');
+            const iconSvg = iconDoc.documentElement;
+
+            // Set attributes for proper sizing and positioning
+            iconSvg.setAttribute('width', NODE_RADIUS * 1.2);
+            iconSvg.setAttribute('height', NODE_RADIUS * 1.2);
+            iconSvg.setAttribute('x', NODE_RADIUS * 0.15);
+            iconSvg.setAttribute('y', NODE_RADIUS * 0.15);
+            iconSvg.setAttribute('filter', 'url(#iconGlow)');
+
+            // Import and append the icon SVG
+            const importedIcon = document.importNode(iconSvg, true);
+            iconContainer.appendChild(importedIcon);
+        }
+
+        g.appendChild(iconContainer);
+
+        // Create text label
+        const text = document.createElementNS(svgNS, "text");
+        text.textContent = weapon.name;
+        text.setAttribute('y', NODE_RADIUS + 20);
+        text.setAttribute('text-anchor', 'middle');
+        text.setAttribute('fill', 'white');
+        text.setAttribute('filter', 'url(#textGlow)');
+        text.setAttribute('class', 'node-label');
+        g.appendChild(text);
+
+        // Add hover effects
+        g.addEventListener('mouseover', () => onNodeHover(weapon.id));
+        g.addEventListener('mouseout', () => onNodeUnhover(weapon.id));
+        g.addEventListener('click', () => onNodeClick(weapon.id));
+
+        return g;
+    }
+    
+    // Create a line element
+    function createLineElement(fromPos, toPos) {
+        const lineGroup = document.createElementNS(svgNS, "g");
+        
+        // Create path for curved line
+        const dx = (toPos.x * GRID_SIZE_X + CENTER_X) - (fromPos.x * GRID_SIZE_X + CENTER_X);
+        const dy = (toPos.y * GRID_SIZE_Y + CENTER_Y) - (fromPos.y * GRID_SIZE_Y + CENTER_Y);
+        const controlX = (fromPos.x * GRID_SIZE_X + CENTER_X) + dx * 0.5;
+        const controlY = (fromPos.y * GRID_SIZE_Y + CENTER_Y) + dy * 0.5;
+        
+        // Create glow effect
+        const glowPath = document.createElementNS(svgNS, "path");
+        glowPath.setAttribute("d", `M ${fromPos.x * GRID_SIZE_X + CENTER_X} ${fromPos.y * GRID_SIZE_Y + CENTER_Y} 
+                              Q ${controlX} ${controlY} 
+                              ${toPos.x * GRID_SIZE_X + CENTER_X} ${toPos.y * GRID_SIZE_Y + CENTER_Y}`);
+        glowPath.setAttribute("fill", "none");
+        glowPath.setAttribute("stroke", "rgba(0, 150, 255, 0.3)");
+        glowPath.setAttribute("stroke-width", "8");
+        glowPath.setAttribute("stroke-linecap", "round");
+        glowPath.setAttribute("filter", "url(#nodeGlow)");
+        lineGroup.appendChild(glowPath);
+        
+        // Main line
+        const path = document.createElementNS(svgNS, "path");
+        path.setAttribute("d", `M ${fromPos.x * GRID_SIZE_X + CENTER_X} ${fromPos.y * GRID_SIZE_Y + CENTER_Y} 
+                              Q ${controlX} ${controlY} 
+                              ${toPos.x * GRID_SIZE_X + CENTER_X} ${toPos.y * GRID_SIZE_Y + CENTER_Y}`);
+        path.setAttribute("fill", "none");
+        path.setAttribute("stroke", "url(#lineGradient)");
+        path.setAttribute("stroke-width", "3");
+        path.setAttribute("stroke-linecap", "round");
+        path.setAttribute("filter", "url(#holoLinePattern)");
+        path.setAttribute("marker-end", "url(#arrow)");
+        
+        // Add animation
+        const dashLength = Math.sqrt(dx * dx + dy * dy);
+        path.setAttribute("stroke-dasharray", `${dashLength}`);
+        path.setAttribute("stroke-dashoffset", `${dashLength}`);
+        
+        const animate = document.createElementNS(svgNS, "animate");
+        animate.setAttribute("attributeName", "stroke-dashoffset");
+        animate.setAttribute("from", `${dashLength}`);
+        animate.setAttribute("to", "0");
+        animate.setAttribute("dur", "1.5s");
+        animate.setAttribute("repeatCount", "indefinite");
+        path.appendChild(animate);
+        
+        lineGroup.appendChild(path);
+        return lineGroup;
+    }
+    
+    // Select a weapon
+    function selectWeapon(weaponId) {
+        currentWeaponId = weaponId;
+        const weapon = weaponTypes[weaponId];
+        if (weapon) {
+            updateSelectedWeaponInfo(weapon);
+            highlightPath(weaponId);
+        }
+    }
+    
+    // Update the selected weapon info
+    function updateSelectedWeaponInfo(weapon) {
+        // Create info panel if it doesn't exist
+        let infoPanel = document.querySelector('.evolution-detail-panel');
+        if (!infoPanel) {
+            infoPanel = document.createElement('div');
+            infoPanel.className = 'evolution-detail-panel';
+            evolutionTreeContainer.appendChild(infoPanel);
+        }
+
+        // Add close button and weapon info
+        infoPanel.innerHTML = `
+            <div class="info-panel-header">
+                <h3>${weapon.name}</h3>
+                <button class="info-close-btn">×</button>
+            </div>
+            <p class="weapon-description">${weapon.description}</p>
+            <div class="weapon-stats">
+                <div class="stat-box">
+                    <h4>Damage</h4>
+                    <p>${weapon.damage}</p>
+                </div>
+                <div class="stat-box">
+                    <h4>Fire Rate</h4>
+                    <p>${weapon.fireRate}</p>
+                </div>
+            </div>
+            ${!weapon.unlocked ? `
+                <div class="requirements">
+                    <p>Required Score: ${weapon.requirements?.score || 0}</p>
+                </div>
+            ` : ''}
+            <button class="select-weapon-btn" ${!weapon.unlocked ? 'disabled' : ''}>
+                ${weapon.unlocked ? 'Select Weapon' : 'Locked'}
+            </button>
+        `;
+
+        // Add event listeners
+        const closeButton = infoPanel.querySelector('.info-close-btn');
+        closeButton.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent event from bubbling up
+            infoPanel.style.display = 'none';
+            
+            // Play close sound
+            if (audioSystem.menuSynth) {
+                audioSystem.playSound(audioSystem.menuSynth, "G4", "16n");
+            }
+        });
+
+        const selectButton = infoPanel.querySelector('.select-weapon-btn');
+        if (selectButton && weapon.unlocked) {
+            selectButton.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent event from bubbling up
+                // TODO: Implement weapon selection logic
+                toggleEvolutionMenu();
+            });
+        }
+
+        // Show the panel with a fade-in effect
+        infoPanel.style.opacity = '0';
+        infoPanel.style.display = 'block';
+        requestAnimationFrame(() => {
+            infoPanel.style.opacity = '1';
+        });
+    }
+    
+    // Highlight the path to the selected weapon
+    function highlightPath(weaponId) {
+        // Clear existing highlights
+        nodeElements.forEach(node => {
+            const circle = node.querySelector('circle');
+            const weapon = weaponTypes[node.getAttribute('data-weapon-id')];
+            circle.setAttribute('fill', weapon.color || 'rgba(0, 20, 60, 0.8)');
+        });
+        
+        lineElements.forEach(line => {
+            line.setAttribute('stroke', 'url(#lineGradient)');
+            line.style.animation = 'pulse 3s infinite';
+        });
+        
+        // Find and highlight the path
+        const path = findPathToWeapon(weaponId);
+        selectedPath = path;
+        
+        path.forEach(nodeId => {
+            const node = nodeElements.get(nodeId);
+            if (node) {
+                const circle = node.querySelector('circle');
+                circle.setAttribute('fill', '#40FFFF');
+            }
+        });
+        
+        path.forEach((nodeId, index) => {
+            if (index < path.length - 1) {
+                const line = lineElements.get(`${nodeId}-${path[index + 1]}`);
+                if (line) {
+                    line.setAttribute('stroke', '#40FFFF');
+                    line.style.animation = 'none';
+                }
+            }
+        });
+    }
+    
+    // Find the path to a weapon
+    function findPathToWeapon(weaponId) {
+        const path = [];
+        let currentWeapon = weaponTypes[weaponId];
+        
+        while (currentWeapon) {
+            path.unshift(currentWeapon.id);
+            currentWeapon = currentWeapon.parentId ? weaponTypes[currentWeapon.parentId] : null;
+        }
+        
+        return path;
+    }
+    
+    function onNodeHover(weaponId) {
+        const node = nodeElements.get(weaponId);
+        if (node) {
+            node.classList.add('hover');
+            // Remove selectWeapon call from hover
+        }
+    }
+
+    function onNodeUnhover(weaponId) {
+        const node = nodeElements.get(weaponId);
+        if (node) {
+            node.classList.remove('hover');
+        }
+    }
+
+    function onNodeClick(weaponId) {
+        // Hide any existing info panels
+        const existingPanels = document.querySelectorAll('.evolution-detail-panel');
+        existingPanels.forEach(panel => {
+            panel.style.display = 'none';
+        });
+
+        // Select weapon and show info panel
+        selectWeapon(weaponId);
+
+        // Play selection sound
+        if (audioSystem.menuSynth) {
+            audioSystem.playSound(audioSystem.menuSynth, "C5", "16n");
+        }
+    }
+    
+    // Public methods
     return {
         init,
         toggleEvolutionMenu,
-        setCurrentWeapon,
-        getCurrentWeaponId,
-        getCurrentWeapon,
-        checkWeaponUnlocks,
-        renderEvolutionTree,
-        isOpen: () => isEvolutionMenuOpen
+        updateEvolutionTreeData,
+        isOpen: () => isMenuOpen,
+        getCurrentWeaponId: () => currentWeaponId
     };
 })();
 

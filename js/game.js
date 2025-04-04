@@ -7,6 +7,8 @@ import targetsSystem from './modules/targets.js';
 import bossSystem from './modules/boss.js';
 import uiSystem from './modules/ui.js';
 import evolutionUI from './modules/evolution_ui.js';
+import zonesSystem from './modules/zones.js';
+import enemiesSystem from './modules/enemies.js';
 
 // Make certain variables global for compatibility with the original monolithic approach
 window.scene = null;
@@ -41,6 +43,12 @@ let backgroundHueSpeed = 0.0005;
 const baseBackgroundHueSpeed = 0.0005;
 const maxBackgroundHueSpeedBoost = 0.0015;
 
+// Add zone progression variables
+let nextZoneScore = 2000;
+const ZONE_SCORE_INCREMENT = 2000;
+const ZONE_SEQUENCE = ['default', 'crystal', 'plasma', 'quantum'];
+let currentZoneIndex = 0;
+
 // Camera
 const cameraOffset = new THREE.Vector3(0, 1.8, 8);
 
@@ -48,80 +56,169 @@ const cameraOffset = new THREE.Vector3(0, 1.8, 8);
 const clock = new THREE.Clock();
 const raycaster = new THREE.Raycaster(); // Reusable raycaster for locking
 
-// Initialize the game
-function initGame() {
+// Initialize game
+async function initGame() {
     try {
-        // Setup Scene
+        // Show loading message with start button
+        const startMessage = document.createElement('div');
+        startMessage.style.position = 'fixed';
+        startMessage.style.top = '50%';
+        startMessage.style.left = '50%';
+        startMessage.style.transform = 'translate(-50%, -50%)';
+        startMessage.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+        startMessage.style.color = 'white';
+        startMessage.style.padding = '20px';
+        startMessage.style.borderRadius = '10px';
+        startMessage.style.fontFamily = 'Arial, sans-serif';
+        startMessage.style.textAlign = 'center';
+        startMessage.style.zIndex = '1000';
+        startMessage.innerHTML = `
+            <div style="margin-bottom: 20px;">Click to Start Game</div>
+            <button style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                Start
+            </button>
+        `;
+        document.body.appendChild(startMessage);
+
+        // Wait for user interaction
+        await new Promise(resolve => {
+            startMessage.querySelector('button').addEventListener('click', () => {
+                startMessage.remove();
+                resolve();
+            });
+        });
+
+        // Initialize UI systems first
+        console.log("Initializing UI systems...");
+        uiSystem.init();
+        evolutionUI.init();
+        console.log("UI systems initialized");
+
+        // Initialize audio and wait for it
+        console.log("Initializing audio system...");
+        const audioReady = await audioSystem.initAudio();
+        if (!audioReady) {
+            throw new Error("Audio system initialization failed");
+        }
+        console.log("Audio system initialized successfully");
+
+        // Initialize THREE.js scene
+        console.log("Initializing scene...");
         window.scene = new THREE.Scene();
-        window.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 3000);
         
+        // Initialize camera with proper position and rotation
+        window.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        window.camera.position.copy(cameraOffset);
+        window.camera.lookAt(new THREE.Vector3(0, 0, -1));
+        
+        // Initialize renderer with proper settings
         const canvas = document.getElementById('gameCanvas');
-        if (!canvas) throw new Error("Canvas element not found!");
+        if (!canvas) {
+            throw new Error("Could not find game canvas");
+        }
         
-        window.renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+        window.renderer = new THREE.WebGLRenderer({
+            canvas: canvas,
+            antialias: true,
+            alpha: true,
+            powerPreference: "high-performance"
+        });
+        
+        // Set renderer properties
+        window.renderer.setSize(window.innerWidth, window.innerHeight);
+        window.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         window.renderer.setClearColor(0x000000);
         window.renderer.shadowMap.enabled = true;
         window.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         
-        // Set renderer size
-        const setSize = () => {
-            if (!window.renderer || !window.camera) return;
-            const width = window.innerWidth;
-            const height = window.innerHeight;
-            window.renderer.setSize(width, height, false);
-            window.camera.aspect = width / height;
-            window.camera.updateProjectionMatrix();
-        };
-        
-        setSize();
-        window.addEventListener('resize', setSize);
-        
-        // Add lighting
+        // Add lights
         setupLighting();
         
-        // Create starfield
-        createStarfield();
-        
-        // Create player
+        // Initialize player
+        console.log("Creating player plane...");
         window.plane = playerSystem.createPlane(window.scene);
+        if (!window.plane) {
+            throw new Error("Failed to create player plane");
+        }
+        console.log("Player plane created successfully");
         
-        // Set target spawn parameters
-        targetsSystem.setSpawnParameters(window.targetSpawnDistance, window.targetSpawnRadius);
-        
-        // Initialize UI
-        uiSystem.init();
-        
-        // Initialize evolution UI
-        evolutionUI.init();
+        // Initialize starfield
+        console.log("Creating starfield...");
+        createStarfield();
+        console.log("Starfield created successfully");
         
         // Setup input listeners
         setupInputListeners();
         
-        console.log("Initialization complete. Starting animation loop.");
+        // Hide loading message
+        hideMessage();
         
-        // Start the game loop
+        // Start animation loop
+        console.log("Starting animation loop...");
         animate();
         
-        // Update camera matrix for raycasting
-        window.camera.updateMatrixWorld(); 
+        // Start background music after a short delay
+        setTimeout(() => {
+            if (audioSystem.isAudioReady()) {
+                audioSystem.startBackgroundMusic();
+            } else {
+                console.warn("Audio not ready for background music");
+            }
+        }, 1000);
         
-        return true;
-    } catch(error) {
-        console.error("Error during initialization:", error);
-        
-        // Display error if setup failed
-        if (!window.renderer) {
-            document.body.innerHTML = `<div style="color: red; padding: 20px; font-family: monospace;">Fatal Error during initialization: ${error.message}. Cannot start game. Check console.</div>`;
-        } else {
-            triggerGameOver(`Initialization Error: ${error.message}`);
-        }
-        
-        return false;
+    } catch (error) {
+        console.error("Error during game initialization:", error);
+        showError("Failed to initialize game. Please refresh the page. Error: " + error.message);
     }
 }
 
+function showMessage(message) {
+    const messageDiv = document.createElement('div');
+    messageDiv.id = 'gameMessage';
+    messageDiv.style.position = 'fixed';
+    messageDiv.style.top = '50%';
+    messageDiv.style.left = '50%';
+    messageDiv.style.transform = 'translate(-50%, -50%)';
+    messageDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+    messageDiv.style.color = 'white';
+    messageDiv.style.padding = '20px';
+    messageDiv.style.borderRadius = '10px';
+    messageDiv.style.fontFamily = 'Arial, sans-serif';
+    messageDiv.style.zIndex = '1000';
+    messageDiv.textContent = message;
+    document.body.appendChild(messageDiv);
+}
+
+function hideMessage() {
+    const messageDiv = document.getElementById('gameMessage');
+    if (messageDiv) {
+        messageDiv.remove();
+    }
+}
+
+function showError(message) {
+    const errorDiv = document.createElement('div');
+    errorDiv.style.position = 'fixed';
+    errorDiv.style.top = '50%';
+    errorDiv.style.left = '50%';
+    errorDiv.style.transform = 'translate(-50%, -50%)';
+    errorDiv.style.backgroundColor = 'rgba(255, 0, 0, 0.8)';
+    errorDiv.style.color = 'white';
+    errorDiv.style.padding = '20px';
+    errorDiv.style.borderRadius = '10px';
+    errorDiv.style.fontFamily = 'Arial, sans-serif';
+    errorDiv.style.zIndex = '1000';
+    errorDiv.textContent = message;
+    document.body.appendChild(errorDiv);
+}
+
 function setupLighting() {
-    const ambientLight = new THREE.HemisphereLight(0xff00ff, 0x00ffff, 1.5);
+    const currentZone = zonesSystem.getCurrentZone();
+    const ambientLight = new THREE.HemisphereLight(
+        currentZone.ambientLight.skyColor,
+        currentZone.ambientLight.groundColor,
+        currentZone.ambientLight.intensity
+    );
     window.scene.add(ambientLight);
     
     const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
@@ -178,19 +275,39 @@ function createStarfield() {
 }
 
 function updateBackground(audioLevel) {
-    const targetHueSpeed = baseBackgroundHueSpeed + maxBackgroundHueSpeedBoost * audioLevel;
+    const currentZone = zonesSystem.getCurrentZone();
+    const { transitionProgress, currentZoneData } = zonesSystem.updateZone(clock.getDelta(), Date.now() - gameStartTime);
+
+    // Update background hue speed based on zone and audio level
+    const targetHueSpeed = currentZone.backgroundHueSpeed + maxBackgroundHueSpeedBoost * audioLevel;
     backgroundHueSpeed = THREE.MathUtils.lerp(backgroundHueSpeed, targetHueSpeed, 0.1);
     backgroundHue = (backgroundHue + backgroundHueSpeed) % 1;
     
+    // Blend between base color and hue-shifted color
     const bgColor = new THREE.Color();
     bgColor.setHSL(backgroundHue, 0.8, 0.1);
+    bgColor.lerp(currentZone.baseColor, 0.5);
     window.renderer.setClearColor(bgColor);
     
+    // Update ambient lighting
     const ambientLight = window.scene.children.find(c => c instanceof THREE.HemisphereLight);
     if (ambientLight) {
-        ambientLight.color.setHSL(backgroundHue, 1.0, 0.6 + audioLevel * 0.2);
-        ambientLight.groundColor.setHSL((backgroundHue + 0.5) % 1, 1.0, 0.4 + audioLevel * 0.1);
+        const skyColor = new THREE.Color(currentZone.ambientLight.skyColor);
+        const groundColor = new THREE.Color(currentZone.ambientLight.groundColor);
+        
+        ambientLight.color.copy(skyColor).multiplyScalar(1.0 + audioLevel * 0.2);
+        ambientLight.groundColor.copy(groundColor).multiplyScalar(1.0 + audioLevel * 0.1);
+        ambientLight.intensity = currentZone.ambientLight.intensity * (1.0 + audioLevel * 0.2);
     }
+
+    // Update star field
+    if (stars && stars.material) {
+        stars.material.size = currentZone.starSize + audioLevel * 1.5;
+        stars.rotation.y += currentZone.starfieldRotationSpeed + audioLevel * 0.0002;
+    }
+
+    // Update audio effects based on zone
+    audioSystem.updateZoneEffects(currentZone.audioEffects);
 }
 
 function updateCamera() {
@@ -208,6 +325,54 @@ function updateCamera() {
 
 function setupInputListeners() {
     const canvas = document.getElementById('gameCanvas');
+    
+    // Initialize keys object
+    keys = {};
+    
+    // Keyboard event listeners
+    document.addEventListener('keydown', (e) => {
+        // Don't process keyboard input when evolution menu is open
+        if (evolutionUI.isOpen()) return;
+        
+        keys[e.key.toLowerCase()] = true;
+        
+        // Handle special keys
+        switch(e.key.toLowerCase()) {
+            case ' ':
+                playerSystem.setIsFlying(true);
+                break;
+            case 'g':
+                isFiring = true;
+                break;
+            case 'x':
+                if (playerSystem.startShift()) {
+                    uiSystem.updateShiftStatus(true);
+                }
+                break;
+            case 't':
+                if (playerSystem.startTeleport()) {
+                    uiSystem.updateTeleportStatus(true);
+                }
+                break;
+            case 'e':
+                evolutionUI.toggleEvolutionMenu();
+                break;
+        }
+    });
+    
+    document.addEventListener('keyup', (e) => {
+        keys[e.key.toLowerCase()] = false;
+        
+        // Handle special key releases
+        switch(e.key.toLowerCase()) {
+            case ' ':
+                playerSystem.setIsFlying(false);
+                break;
+            case 'g':
+                isFiring = false;
+                break;
+        }
+    });
     
     canvas.addEventListener('click', () => {
         // Don't process clicks when evolution menu is open
@@ -254,36 +419,24 @@ function setupInputListeners() {
         // Don't process mouse movement when evolution menu is open
         if (evolutionUI.isOpen()) return;
         
-        if (isPointerLocked && !uiSystem.isGameOver()) {
-            const sensitivity = 0.002;
-            const dX = e.movementX || 0;
-            const dY = e.movementY || 0;
+        if (isPointerLocked) {
+            const movementX = e.movementX || e.mozMovementX || e.webkitMovementX || 0;
+            const movementY = e.movementY || e.mozMovementY || e.webkitMovementY || 0;
             
-            // Allow mouse movement even when locked, but maybe reduce sensitivity slightly?
-            playerSystem.updateYaw(dX, sensitivity);
-            playerSystem.updatePitch(dY, sensitivity);
+            // Convert mouse movement to radians and apply sensitivity
+            const mouseSensitivity = 0.002;
+            playerSystem.updateYaw(movementX, mouseSensitivity);
+            playerSystem.updatePitch(movementY, mouseSensitivity);
         }
     });
     
-    document.addEventListener('keydown', (e) => {
-        if (uiSystem.isGameOver()) return;
-        
-        const k = e.key.toLowerCase();
-        keys[k] = true;
-        
-        if (k === ' ') playerSystem.setIsFlying(true);
-        if (k === 'g') isFiring = true;
-        if (k === 'x') playerSystem.startShift();
-        if (k === 't') playerSystem.startTeleport();
-        if (k === 'e' && !evolutionUI.isOpen()) evolutionUI.toggleEvolutionMenu();
-    });
-    
-    document.addEventListener('keyup', (e) => {
-        const k = e.key.toLowerCase();
-        keys[k] = false;
-        
-        if (k === ' ') playerSystem.setIsFlying(false);
-        if (k === 'g') isFiring = false;
+    // Handle window resize
+    window.addEventListener('resize', () => {
+        if (window.camera && window.renderer) {
+            window.camera.aspect = window.innerWidth / window.innerHeight;
+            window.camera.updateProjectionMatrix();
+            window.renderer.setSize(window.innerWidth, window.innerHeight);
+        }
     });
 }
 
@@ -565,42 +718,32 @@ function checkGameOver() {
     
     // Check player collisions only if not invulnerable
     if (!playerSystem.isInvulnerable()) {
-        // Enemy projectiles
+        // Enemy projectiles and enemies
         const flames = weaponsSystem.getFlames();
+        const enemies = enemiesSystem.getEnemies();
+        
+        // Check projectile collisions
         for (let i = flames.length - 1; i >= 0; i--) {
             const projectile = flames[i];
-            // Add thorough checks before accessing properties
             if (projectile && projectile.userData && projectile.userData.isEnemyProjectile && window.plane && window.plane.position) { 
-                if (projectile.position.distanceTo(window.plane.position) < 1.5) { // Approximate player collision radius
+                if (projectile.position.distanceTo(window.plane.position) < 1.5) {
                     triggerGameOver("Annihilated");
                     effectsSystem.createExplosion(window.plane.position);
-                    // Safely request removal, let update loop handle it
-                    if (projectile.parent) projectile.userData.markedForRemoval = true; 
+                    if (projectile.parent) projectile.userData.markedForRemoval = true;
                     return;
                 }
             }
         }
         
-        // Target collisions
-        const targets = targetsSystem.getTargets();
-        for (const target of targets) {
-            if (target && window.plane && target.userData && target.position && window.plane.position &&
-                window.plane.position.distanceTo(target.position) < 1.5 + (target.userData.collisionRadius || 1.0)) {
-                triggerGameOver("Collided with Entity");
-                effectsSystem.createExplosion(window.plane.position);
-                return;
+        // Check enemy collisions
+        for (const enemy of enemies) {
+            if (enemy && window.plane && window.plane.position) {
+                if (enemy.position.distanceTo(window.plane.position) < 3.0) {
+                    triggerGameOver("Crashed into Enemy");
+                    effectsSystem.createExplosion(window.plane.position);
+                    return;
+                }
             }
-        }
-        
-        // Boss collision
-        const bossObject = bossSystem.getBossObject();
-        // Add thorough checks
-        if (bossSystem.isBossActive() && bossObject && bossObject.userData && bossObject.position &&
-            window.plane && window.plane.position && 
-            window.plane.position.distanceTo(bossObject.position) < 1.5 + (bossObject.userData.collisionRadius || 5.0)) { // Boss likely larger
-            triggerGameOver("Consumed by the Anomaly");
-            effectsSystem.createExplosion(window.plane.position);
-            return;
         }
     }
     
@@ -678,6 +821,26 @@ function restartGame() {
     animate();
 }
 
+function checkZoneProgression(score) {
+    if (score >= nextZoneScore && currentZoneIndex < ZONE_SEQUENCE.length - 1) {
+        currentZoneIndex++;
+        const nextZone = ZONE_SEQUENCE[currentZoneIndex];
+        zonesSystem.transitionToZone(nextZone);
+        nextZoneScore += ZONE_SCORE_INCREMENT;
+        
+        // Update target parameters for new zone
+        const zoneData = zonesSystem.getCurrentZone();
+        targetsSystem.updateZoneParameters(
+            zoneData.targetSpawnRate,
+            zoneData.maxTargets,
+            zoneData.targetSpeedMultiplier
+        );
+        
+        return true;
+    }
+    return false;
+}
+
 // Main animation loop
 function animate() {
     if (uiSystem.isGameOver()) return;
@@ -697,8 +860,15 @@ function animate() {
         // Audio analysis
         const audioLevel = audioSystem.updateAudioAnalysis();
         
-        // Update background
+        // Update background and zone effects
         updateBackground(audioLevel);
+        
+        // Check for zone progression
+        const score = uiSystem.getScore();
+        if (checkZoneProgression(score)) {
+            // Zone transition occurred
+            console.log(`Transitioned to zone: ${zonesSystem.getCurrentZone().name}`);
+        }
         
         // Update player
         playerSystem.updateMovement(deltaTime, keys);
@@ -720,17 +890,28 @@ function animate() {
         const teleportStatus = playerSystem.updateTeleportStatus();
         uiSystem.updateTeleportStatus(teleportStatus);
         
-        // Update effects (including teleport effects)
+        // Update effects
         effectsSystem.updateEffects(deltaTime);
         
-        // Update projectiles
+        // Update enemies
+        enemiesSystem.updateEnemies(deltaTime, window.scene, window.plane.position);
+        
+        // Update projectiles with both targets and enemies
         weaponsSystem.updateProjectiles(
-            deltaTime, 
-            targetsSystem.getTargets(), 
-            bossSystem.getBossObject(), 
+            deltaTime,
+            [...targetsSystem.getTargets(), ...enemiesSystem.getEnemies()],
+            bossSystem.getBossObject(),
             bossSystem.isBossActive(),
-            damageTargetWrapper, // Use wrapped function
-            damageBossWrapper   // Use wrapped function
+            (target, amount, hitPosition) => {
+                if (target.userData.type) {
+                    // This is an enemy
+                    return enemiesSystem.damageEnemy(target, amount, hitPosition, window.scene, uiSystem.getScore(), uiSystem.setScore);
+                } else {
+                    // This is a regular target
+                    return targetsSystem.damageTarget(target, amount, hitPosition, window.scene, uiSystem.getScore(), uiSystem.setScore);
+                }
+            },
+            damageBossWrapper
         );
         
         // Update targets
@@ -738,78 +919,46 @@ function animate() {
             deltaTime,
             window.plane,
             window.scene,
-            shiftStatus.active,
+            playerSystem.isShifting(),
             playerSystem.getShiftMaterial(),
             playerSystem.getOriginalMaterials(),
             bossSystem.isBossActive(),
-            lockedTarget // Pass locked target for potential highlighting
+            lockedTarget
         );
         
-        // Update explosions
-        effectsSystem.updateExplosions();
+        // Update boss if active
+        if (bossSystem.isBossActive()) {
+            bossSystem.updateBoss(deltaTime, window.scene);
+        }
         
-        // Update gravity wells
+        // Update explosions and effects
+        effectsSystem.updateExplosions();
         effectsSystem.updateGravityWells(deltaTime);
         
-        // Update boss
-        bossSystem.updateBoss(
-            deltaTime,
-            window.plane,
-            window.scene,
-            shiftStatus.active,
-            playerSystem.getShiftMaterial(),
-            playerSystem.getOriginalMaterials(),
-            lockedTarget // Pass locked target for potential highlighting
-        );
-        
-        // Update boss health bar
-        if (bossSystem.isBossActive()) {
-            const bossHealth = bossSystem.getBossHealth();
-            uiSystem.updateBossHealthBar(bossHealth.percentage);
-        } else {
-            uiSystem.hideBossHealthBar();
+        // Firing logic
+        if (isFiring && !playerSystem.isShifting()) {
+            const projectileOrigin = playerSystem.getProjectileOrigin();
+            weaponsSystem.fireWeapon(
+                projectileOrigin,
+                aimDirection,
+                window.scene,
+                [...targetsSystem.getTargets(), ...enemiesSystem.getEnemies()],
+                bossSystem.getBossObject(),
+                bossSystem.isBossActive()
+            );
         }
         
-        // Apply gravity forces to objects
-        applyGravityToObjects(deltaTime);
-        
-        // Check for weapon level up
-        checkWeaponLevelUp();
-        
-        // Firing logic (use calculated aimDirection)
-        if (isFiring && !shiftStatus.active) { // Don't fire while shifting
-             // Ensure necessary components exist before firing
-             if (window.scene && playerSystem && weaponsSystem && targetsSystem && bossSystem) {
-                // Get projectile origin and direction
-                const projectileOrigin = playerSystem.getProjectileOrigin();
-                
-                // Fire the current weapon
-                weaponsSystem.fireWeapon(
-                    projectileOrigin,
-                    aimDirection,
-                    window.scene,
-                    targetsSystem.getTargets(),
-                    bossSystem.getBossObject(),
-                    bossSystem.isBossActive()
-                );
-             }
-        }
-        
-        // Check game state changes
+        // Check for game over conditions
         checkGameOver();
         
-        // Visual effects & pulsations
-        updateVisualEffects(elapsedTime, audioLevel);
-        
-        // Render
+        // Render the scene
         if (window.renderer && window.scene && window.camera) {
             window.renderer.render(window.scene, window.camera);
         } else {
             console.error("Render call skipped: Renderer, Scene or Camera missing.");
         }
     } catch (error) {
-        console.error("Animation loop error:", error);
-        triggerGameOver(`Runtime Error: ${error.message}`);
+        console.error("Error in animation loop:", error);
     }
 }
 
@@ -858,8 +1007,8 @@ window.damageTarget = damageTargetWrapper; // Expose the wrapper
 window.damageBoss = damageBossWrapper;   // Expose the wrapper
 window.restartGame = restartGame;
 
-// Initialize the game when module loads
-document.addEventListener('DOMContentLoaded', initGame);
+// Start the game when the window loads
+window.addEventListener('load', initGame);
 
 // Export for potential access from other modules if needed (less likely now)
 export {

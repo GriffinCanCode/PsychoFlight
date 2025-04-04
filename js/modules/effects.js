@@ -6,6 +6,7 @@ const effectsSystem = (() => {
     let explosions = [];
     let gravityWells = [];
     let effects = [];
+    let zoneTransitions = [];
     
     // Constants
     const explosionParticles = 30;
@@ -225,6 +226,106 @@ const effectsSystem = (() => {
         effects.push(ring);
     }
 
+    function createZoneTransitionEffect(position) {
+        const transitionEffect = {
+            position: position.clone(),
+            age: 0,
+            maxAge: 60,
+            radius: 0,
+            maxRadius: 100,
+            particles: []
+        };
+
+        // Create expanding ring effect
+        const ringGeometry = new THREE.RingGeometry(0, 1, 32);
+        const ringMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending
+        });
+
+        const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+        ring.position.copy(position);
+        ring.scale.set(0.1, 0.1, 0.1);
+        window.scene.add(ring);
+        transitionEffect.ring = ring;
+
+        // Create particles that expand outward
+        for (let i = 0; i < 50; i++) {
+            const particleGeometry = new THREE.PlaneGeometry(0.5, 0.5);
+            const particleMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.6,
+                blending: THREE.AdditiveBlending
+            });
+
+            const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+            particle.position.copy(position);
+
+            // Random direction for particle
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 0.5 + Math.random() * 0.5;
+            const direction = new THREE.Vector3(
+                Math.cos(angle),
+                Math.sin(angle),
+                (Math.random() - 0.5) * 2
+            ).normalize();
+
+            particle.userData = {
+                velocity: direction.multiplyScalar(speed),
+                rotationSpeed: (Math.random() - 0.5) * 0.1
+            };
+
+            window.scene.add(particle);
+            transitionEffect.particles.push(particle);
+        }
+
+        zoneTransitions.push(transitionEffect);
+    }
+
+    function updateZoneTransitions() {
+        for (let i = zoneTransitions.length - 1; i >= 0; i--) {
+            const effect = zoneTransitions[i];
+            effect.age++;
+
+            if (effect.age >= effect.maxAge) {
+                // Remove effect
+                if (effect.ring) {
+                    window.scene.remove(effect.ring);
+                    effect.ring.geometry.dispose();
+                    effect.ring.material.dispose();
+                }
+
+                effect.particles.forEach(particle => {
+                    window.scene.remove(particle);
+                    particle.geometry.dispose();
+                    particle.material.dispose();
+                });
+
+                zoneTransitions.splice(i, 1);
+                continue;
+            }
+
+            // Update ring
+            if (effect.ring) {
+                const progress = effect.age / effect.maxAge;
+                const scale = effect.maxRadius * Math.pow(progress, 0.5);
+                effect.ring.scale.set(scale, scale, scale);
+                effect.ring.material.opacity = 1 - progress;
+            }
+
+            // Update particles
+            effect.particles.forEach(particle => {
+                particle.position.add(particle.userData.velocity);
+                particle.rotation.z += particle.userData.rotationSpeed;
+                particle.material.opacity = 1 - (effect.age / effect.maxAge);
+            });
+        }
+    }
+
     // Update effects array to include teleport effects
     function updateEffects(deltaTime) {
         const now = Date.now();
@@ -246,6 +347,10 @@ const effectsSystem = (() => {
             }
             // ... existing effect updates ...
         }
+
+        updateExplosions();
+        updateGravityWells(deltaTime);
+        updateZoneTransitions();
     }
     
     // Public API
@@ -258,7 +363,8 @@ const effectsSystem = (() => {
         getGravityWells,
         clearEffects,
         createTeleportEffect,
-        updateEffects
+        updateEffects,
+        createZoneTransitionEffect
     };
 })();
 

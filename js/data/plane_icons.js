@@ -20,23 +20,28 @@ function createIconSvg(type, content) {
 const planeIcons = {
     // Basic plane - simple delta wing
     planeBasic: createIconSvg('basic', `
-        <linearGradient id="basicGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stop-color="#80CFFF" />
-            <stop offset="50%" stop-color="#60BFFF" />
-            <stop offset="100%" stop-color="#40A0FF" />
+        <linearGradient id="basicGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#80C0FF" />
+            <stop offset="40%" stop-color="#40A0FF" />
+            <stop offset="60%" stop-color="#2080FF" />
+            <stop offset="100%" stop-color="#1060CC" />
         </linearGradient>
-        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="1.2" result="blur" />
-            <feFlood flood-color="#60FFFF" flood-opacity="0.6" result="glowColor" />
+        <filter id="basicGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="1.5" result="blur" />
+            <feFlood flood-color="#40A0FF" flood-opacity="0.7" result="glowColor" />
             <feComposite in="glowColor" in2="blur" operator="in" result="softGlow" />
             <feMerge>
                 <feMergeNode in="softGlow" />
                 <feMergeNode in="SourceGraphic" />
             </feMerge>
         </filter>
-        <path d="M12,2 L4,14 L20,14 Z" fill="url(#basicGradient)" filter="url(#glow)" />
-        <rect x="11" y="14" width="2" height="8" fill="#60CFFF" />
-        <path d="M12,6 L9,12 L15,12 Z" fill="#FFFFFF" fill-opacity="0.6" />
+        <g class="plane-icon">
+            <path d="M12,2 L3,16 L21,16 Z" fill="url(#basicGradient)" filter="url(#basicGlow)" />
+            <rect x="11" y="16" width="2" height="6" fill="#40A0FF" />
+            <circle cx="8" cy="14" r="1.2" fill="#FFFFFF" />
+            <circle cx="16" cy="14" r="1.2" fill="#FFFFFF" />
+            <path d="M12,6 L9,13 L15,13 Z" fill="#FFFFFF" fill-opacity="0.6" />
+        </g>
     `),
     
     // Flamethrower plane - angular with flame ports
@@ -56,11 +61,13 @@ const planeIcons = {
                 <feMergeNode in="SourceGraphic" />
             </feMerge>
         </filter>
-        <path d="M12,2 L3,16 L21,16 Z" fill="url(#flameGradient)" filter="url(#flameGlow)" />
-        <rect x="11" y="16" width="2" height="6" fill="#FF8040" />
-        <circle cx="8" cy="14" r="1.2" fill="#FFFF80" />
-        <circle cx="16" cy="14" r="1.2" fill="#FFFF80" />
-        <path d="M12,6 L9,13 L15,13 Z" fill="#FFFFFF" fill-opacity="0.6" />
+        <g class="plane-icon">
+            <path d="M12,2 L3,16 L21,16 Z" fill="url(#flameGradient)" filter="url(#flameGlow)" />
+            <rect x="11" y="16" width="2" height="6" fill="#FF8040" />
+            <circle cx="8" cy="14" r="1.2" fill="#FFFF80" />
+            <circle cx="16" cy="14" r="1.2" fill="#FFFF80" />
+            <path d="M12,6 L9,13 L15,13 Z" fill="#FFFFFF" fill-opacity="0.6" />
+        </g>
     `),
     
     // Spread shot plane - wider wings

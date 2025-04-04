@@ -209,27 +209,23 @@ const uiSystem = (() => {
         // Add event listeners
         helpButton.addEventListener('click', () => {
             helpModal.style.display = 'flex';
-            // Pause game if it's running
-            if (typeof evolutionUI !== 'undefined' && !evolutionUI.isOpen()) {
-                evolutionUI.toggleEvolutionMenu();
-            }
+            // Exit pointer lock when help is opened
+            document.exitPointerLock?.();
         });
 
         closeButton.addEventListener('click', () => {
             helpModal.style.display = 'none';
-            // Resume game if it was running
-            if (typeof evolutionUI !== 'undefined' && evolutionUI.isOpen()) {
-                evolutionUI.toggleEvolutionMenu();
-            }
+            // Request pointer lock when help is closed
+            const canvas = document.getElementById('gameCanvas');
+            canvas?.requestPointerLock?.();
         });
 
         helpModal.addEventListener('click', (e) => {
             if (e.target === helpModal) {
                 helpModal.style.display = 'none';
-                // Resume game if it was running
-                if (typeof evolutionUI !== 'undefined' && evolutionUI.isOpen()) {
-                    evolutionUI.toggleEvolutionMenu();
-                }
+                // Request pointer lock when help is closed
+                const canvas = document.getElementById('gameCanvas');
+                canvas?.requestPointerLock?.();
             }
         });
     }

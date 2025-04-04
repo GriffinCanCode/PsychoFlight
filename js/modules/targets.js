@@ -8,8 +8,9 @@ const targetsSystem = (() => {
     let lastSpawnTime = 0;
     
     // Constants
-    const targetSpawnInterval = 1000;
-    const maxTargets = 15;
+    let targetSpawnInterval = 1000;
+    let maxTargets = 15;
+    let targetSpeedMultiplier = 1.0;
     
     // These will be exposed to be set by the game module
     let targetSpawnDistance = -150;
@@ -75,12 +76,14 @@ const targetsSystem = (() => {
         
         target.castShadow = true;
         
+        // Apply zone speed multiplier to velocity
+        const baseSpeed = 0.05 + Math.random() * 0.05;
         target.userData = {
             health: 30,
             velocity: new THREE.Vector3(
-                (Math.random() - 0.5) * 0.05,
-                (Math.random() - 0.5) * 0.05,
-                (Math.random()) * 0.1 + 0.05
+                (Math.random() - 0.5) * baseSpeed * targetSpeedMultiplier,
+                (Math.random() - 0.5) * baseSpeed * targetSpeedMultiplier,
+                (Math.random()) * baseSpeed * targetSpeedMultiplier + 0.05
             ),
             rotationSpeed: new THREE.Vector3(
                 (Math.random() - 0.5) * 0.02,
@@ -164,69 +167,10 @@ const targetsSystem = (() => {
         }
     }
     
-    function updateTargets(deltaTime, plane, scene, isShifting, shiftMaterial, originalMaterials, bossActive) {
-        // Update existing targets
-        for (let i = targets.length - 1; i >= 0; i--) {
-            const target = targets[i];
-            
-            // Safety check
-            if (!target || !target.userData) {
-                targets.splice(i, 1);
-                continue;
-            }
-            
-            // Move and rotate
-            target.position.add(target.userData.velocity.clone().multiplyScalar(deltaTime));
-            target.rotation.x += target.userData.rotationSpeed.x;
-            target.rotation.y += target.userData.rotationSpeed.y;
-            target.rotation.z += target.userData.rotationSpeed.z;
-            
-            // Handle material updating for dimension shift
-            if (!isShifting && target.material !== target.userData.originalMaterial) {
-                target.material = target.userData.originalMaterial;
-            } else if (isShifting && target.material !== shiftMaterial) {
-                target.material = shiftMaterial;
-            }
-            
-            // Pulsating effect for emissive materials
-            if (target.material.emissive) {
-                const time = performance.now() * 0.002 + i * 0.5;
-                target.material.emissiveIntensity = 0.5 + Math.sin(time) * 0.4;
-                target.material.needsUpdate = true;
-            }
-            
-            // Remove targets that go too far
-            const distanceToPlane = target.position.distanceTo(plane.position);
-            if (target.position.z > plane.position.z + 50 || distanceToPlane > 300) {
-                scene.remove(target);
-                originalMaterials.delete(target);
-                target.geometry.dispose();
-                target.material.dispose();
-                targets.splice(i, 1);
-            }
-        }
-        
-        // Spawn new targets if needed
-        const now = performance.now();
-        if (!bossActive && now - lastSpawnTime > targetSpawnInterval) {
-            spawnTarget(plane, scene, originalMaterials, bossActive);
-            lastSpawnTime = now;
-        }
-    }
-    
-    function getTargets() {
-        return targets;
-    }
-    
-    function clearTargets(scene, originalMaterials) {
-        for (let i = targets.length - 1; i >= 0; i--) {
-            const target = targets[i];
-            scene.remove(target);
-            originalMaterials.delete(target);
-            target.geometry.dispose();
-            target.material.dispose();
-        }
-        targets = [];
+    function updateZoneParameters(spawnRate, maxTargetCount, speedMultiplier) {
+        targetSpawnInterval = spawnRate;
+        maxTargets = maxTargetCount;
+        targetSpeedMultiplier = speedMultiplier;
     }
     
     function setSpawnParameters(distance, radius) {
@@ -234,11 +178,67 @@ const targetsSystem = (() => {
         targetSpawnRadius = radius;
     }
     
-    function getSpawnParameters() {
-        return {
-            targetSpawnDistance,
-            targetSpawnRadius
-        };
+    function getTargets() {
+        return targets;
+    }
+    
+    function clearTargets(scene, originalMaterials) {
+        targets.forEach(target => {
+            scene.remove(target);
+            target.geometry.dispose();
+            target.material.dispose();
+            originalMaterials.delete(target);
+        });
+        targets = [];
+    }
+    
+    function updateTargets(deltaTime, plane, scene, isShifting, shiftMaterial, originalMaterials, bossActive, lockedTarget) {
+        // Spawn new targets based on interval
+        if (Date.now() - lastSpawnTime > targetSpawnInterval && !bossActive) {
+            spawnTarget(plane, scene, originalMaterials, bossActive);
+            lastSpawnTime = Date.now();
+        }
+
+        // Update existing targets
+        for (let i = targets.length - 1; i >= 0; i--) {
+            const target = targets[i];
+            
+            // Update position
+            target.position.add(target.userData.velocity);
+            
+            // Update rotation
+            target.rotation.x += target.userData.rotationSpeed.x;
+            target.rotation.y += target.userData.rotationSpeed.y;
+            target.rotation.z += target.userData.rotationSpeed.z;
+            
+            // Handle dimension shifting
+            if (isShifting) {
+                if (target.material !== shiftMaterial) {
+                    target.userData.originalMaterial = target.material;
+                    target.material = shiftMaterial;
+                }
+            } else if (target.material === shiftMaterial) {
+                target.material = target.userData.originalMaterial;
+            }
+            
+            // Handle target highlighting
+            if (target === lockedTarget) {
+                target.material.emissiveIntensity = 2.0;
+            } else if (target.material !== shiftMaterial) {
+                target.material.emissiveIntensity = 1.0;
+            }
+            
+            // Remove targets that are too far away
+            if (target.position.z > 50 || 
+                Math.abs(target.position.x) > 100 || 
+                Math.abs(target.position.y) > 100) {
+                scene.remove(target);
+                target.geometry.dispose();
+                target.material.dispose();
+                originalMaterials.delete(target);
+                targets.splice(i, 1);
+            }
+        }
     }
     
     // Public API
@@ -249,7 +249,7 @@ const targetsSystem = (() => {
         getTargets,
         clearTargets,
         setSpawnParameters,
-        getSpawnParameters
+        updateZoneParameters
     };
 })();
 

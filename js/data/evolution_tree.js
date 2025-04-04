@@ -14,7 +14,7 @@ const weaponTypes = {
         fireRate: 1.0,
         color: '#40A0FF', // Light blue
         lineColor: '#40C0FF',
-        icon: 'planeBasic',
+        icon: 'basic',
         unlocked: true, // Available from start
     },
     
@@ -27,7 +27,7 @@ const weaponTypes = {
         fireRate: 1.2,
         color: '#FF8040', // Orange
         lineColor: '#FFA060',
-        icon: 'planeFlame',
+        icon: 'flame',
         parentId: 'basic',
         requirements: { score: 1000 },
         unlocked: false
@@ -40,7 +40,7 @@ const weaponTypes = {
         fireRate: 0.8,
         color: '#60FFFF', // Cyan
         lineColor: '#80FFFF',
-        icon: 'planeSpread',
+        icon: 'spread',
         parentId: 'basic',
         requirements: { score: 1500 },
         unlocked: false
@@ -55,7 +55,7 @@ const weaponTypes = {
         fireRate: 0.5,
         color: '#FF60FF', // Pink
         lineColor: '#FF80FF',
-        icon: 'planeBeam',
+        icon: 'beam',
         parentId: 'spread',
         requirements: { score: 4000 },
         unlocked: false
@@ -68,7 +68,7 @@ const weaponTypes = {
         fireRate: 0.7,
         color: '#FF4080', // Hot pink
         lineColor: '#FF6090',
-        icon: 'planeNova',
+        icon: 'nova',
         parentId: 'flame',
         requirements: { score: 3500 },
         unlocked: false
@@ -83,7 +83,7 @@ const weaponTypes = {
         fireRate: 0.6,
         color: '#A040FF', // Purple
         lineColor: '#C060FF',
-        icon: 'planePhase',
+        icon: 'phase',
         parentId: 'beam',
         requirements: { score: 7000 },
         unlocked: false
@@ -96,7 +96,7 @@ const weaponTypes = {
         fireRate: 0.4,
         color: '#FF8000', // Orange
         lineColor: '#FFA040',
-        icon: 'planeSingularity',
+        icon: 'singularity',
         parentId: 'nova',
         requirements: { score: 6500 },
         unlocked: false
@@ -107,19 +107,19 @@ const weaponTypes = {
 const evolutionTree = {
     // Map weapon IDs to their positions in the tree visualization
     positions: {
-        basic: { x: 0, y: 7 }, // Root at the bottom
+        basic: { x: 0, y: 2 },     // Center position
         
         // Tier 1 (branching)
-        flame: { x: -3, y: 5 },
-        spread: { x: 3, y: 5 },
+        flame: { x: -1.5, y: 1 },
+        spread: { x: 1.5, y: 1 },
         
         // Tier 2
-        nova: { x: -3, y: 3 },
-        beam: { x: 3, y: 3 },
+        nova: { x: -1.5, y: 0 },
+        beam: { x: 1.5, y: 0 },
         
         // Tier 3
-        singularity: { x: -3, y: 1 },
-        phaseShift: { x: 3, y: 1 }
+        singularity: { x: -1.5, y: -1 },
+        phaseShift: { x: 1.5, y: -1 }
     },
     
     // Define the connections between nodes
