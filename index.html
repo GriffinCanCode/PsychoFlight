@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hyper Psychedelic Flight Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/three@0.139.0/build/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Press Start 2P', cursive; background-color: #000000; color: #ffffff; }
+        #gameCanvas { width: 100%; height: 100vh; display: block; cursor: crosshair; position: fixed; top: 0; left: 0; z-index: 0; }
+        #uiOverlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; display: flex; flex-direction: column; justify-content: space-between; padding: 15px; text-shadow: 1px 1px 3px rgba(0,0,0,0.7); }
+        #topUI { display: flex; justify-content: space-between; align-items: flex-start; width: 100%; }
+        #scoreDisplay { font-size: 1.5rem; color: #00ffcc; }
+        #statusInfo { text-align: right; }
+        #weaponInfo { font-size: 0.8rem; color: #ffff00; }
+        #shiftStatus { font-size: 0.8rem; color: #ff00ff; margin-top: 5px; }
+        #instructions { color: #f0f0f0; padding: 8px; border-radius: 5px; font-size: 0.65rem; background-color: rgba(20, 20, 40, 0.6); border: 1px solid rgba(255, 255, 255, 0.1); align-self: center; margin-bottom: 5px; }
+        #bossHealthBarContainer { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 40%; height: 20px; background-color: rgba(100, 100, 100, 0.5); border: 2px solid #ff00ff; border-radius: 5px; display: none; z-index: 1; }
+        #bossHealthBar { width: 100%; height: 100%; background: linear-gradient(90deg, #ff0000, #ffff00); border-radius: 3px; transition: width 0.2s ease-out; }
+        .game-over-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(circle, rgba(100, 0, 150, 0.8) 0%, rgba(0, 0, 50, 0.95) 100%); display: flex; justify-content: center; align-items: center; z-index: 2; pointer-events: auto; backdrop-filter: blur(5px); }
+        .game-over-content { text-align: center; padding: 30px; border-radius: 15px; border: 5px solid #ff00ff; background-color: rgba(0, 0, 20, 0.8); box-shadow: 0 0 25px #ff00ff, 0 0 10px #ffffff inset; animation: pulseBorder 2s infinite; }
+        @keyframes pulseBorder { 0% { border-color: #ff00ff; box-shadow: 0 0 25px #ff00ff, 0 0 10px #ffffff inset; } 50% { border-color: #00ffff; box-shadow: 0 0 35px #00ffff, 0 0 15px #ffffff inset; } 100% { border-color: #ff00ff; box-shadow: 0 0 25px #ff00ff, 0 0 10px #ffffff inset; } }
+        .game-over-title { font-size: 2.5rem; color: #ffff00; margin-bottom: 1.5rem; text-shadow: 0 0 5px #ffff00, 0 0 10px #ff00ff; }
+        .game-over-score { font-size: 1.5rem; color: #00ffcc; margin-bottom: 2rem; }
+        .play-again-button { padding: 1rem 2rem; background: linear-gradient(45deg, #ff00ff, #00ffff); color: #ffffff; font-family: 'Press Start 2P', cursive; border-radius: 8px; cursor: pointer; font-size: 1.2rem; transition: all 0.3s ease; border: none; box-shadow: 0 0 10px #ffffff, 0 0 5px #000000 inset; text-shadow: 1px 1px 2px #000000; }
+        .play-again-button:hover { transform: scale(1.1); box-shadow: 0 0 20px #ffffff, 0 0 10px #000000 inset; }
+        #crosshair { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 20px; height: 20px; opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 2; }
+        #crosshair::before, #crosshair::after { content: ''; position: absolute; background-color: #00ffcc; }
+        #crosshair::before { top: 0; left: 9px; width: 2px; height: 20px; }
+        #crosshair::after { top: 9px; left: 0; width: 20px; height: 2px; }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="uiOverlay">
+        <div id="topUI">
+            <div id="scoreDisplay">Score: 0</div>
+            <div id="statusInfo">
+                 <div id="weaponInfo">Weapon: Flamethrower</div>
+                 <div id="shiftStatus">Shift: READY</div>
+            </div>
+        </div>
+         <div id="bossHealthBarContainer">
+             <div id="bossHealthBar"></div>
+         </div>
+        <div id="instructions">
+            WASD: Steer | Space: Fly | G: Fire | X: Dimension Shift | Click: Lock Aim
+        </div>
+        <div id="crosshair"></div>
+    </div>
+    <div class="game-over-overlay" style="display: none;">
+        <div class="game-over-content">
+            <h2 class="game-over-title">TRANSCENDENCE?</h2>
+            <p class="game-over-score">Final Score: <span id="finalScore">0</span></p>
+            <button class="play-again-button">RE-CALIBRATE</button>
+        </div>
+    </div>
+
+    <!-- Ensure this line exists and points to the correct entry point -->
+    <script type="module" src="js/game.js" defer></script>
+</body>
+</html>
