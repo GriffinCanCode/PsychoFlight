@@ -6,6 +6,7 @@ import weaponsSystem from './modules/weapons.js';
 import targetsSystem from './modules/targets.js';
 import bossSystem from './modules/boss.js';
 import uiSystem from './modules/ui.js';
+import evolutionUI from './modules/evolution_ui.js';
 
 // Make certain variables global for compatibility with the original monolithic approach
 window.scene = null;
@@ -89,6 +90,9 @@ function initGame() {
         
         // Initialize UI
         uiSystem.init();
+        
+        // Initialize evolution UI
+        evolutionUI.init();
         
         // Setup input listeners
         setupInputListeners();
@@ -206,6 +210,9 @@ function setupInputListeners() {
     const canvas = document.getElementById('gameCanvas');
     
     canvas.addEventListener('click', () => {
+        // Don't process clicks when evolution menu is open
+        if (evolutionUI.isOpen()) return;
+        
         if (!audioSystem.isAudioReady()) {
             audioSystem.initAudio().then(ready => {
                 if (ready) console.log("Audio Context Ready");
@@ -244,6 +251,9 @@ function setupInputListeners() {
     }, false);
     
     document.addEventListener('mousemove', (e) => {
+        // Don't process mouse movement when evolution menu is open
+        if (evolutionUI.isOpen()) return;
+        
         if (isPointerLocked && !uiSystem.isGameOver()) {
             const sensitivity = 0.002;
             const dX = e.movementX || 0;
@@ -264,6 +274,7 @@ function setupInputListeners() {
         if (k === ' ') playerSystem.setIsFlying(true);
         if (k === 'g') isFiring = true;
         if (k === 'x') playerSystem.startShift();
+        if (k === 'e' && !evolutionUI.isOpen()) evolutionUI.toggleEvolutionMenu(); // Toggle evolution menu with E key
     });
     
     document.addEventListener('keyup', (e) => {
@@ -431,14 +442,16 @@ function updateAimDirection() {
 // Game interaction functions
 function checkWeaponLevelUp() {
     const score = uiSystem.getScore();
-    const scoreThresholds = {
-        spread: SCORE_THRESHOLD_SPREAD,
-        beam: SCORE_THRESHOLD_BEAM
-    };
     
-    const result = weaponsSystem.checkWeaponLevelUp(score, scoreThresholds);
+    // Use the evolution system to check for unlocks
+    const result = weaponsSystem.checkWeaponUnlocks(score, evolutionUI);
+    
     if (result.leveledUp) {
+        // Update the weapon info in the UI
         uiSystem.updateWeaponInfo(weaponsSystem.getWeaponName());
+        
+        // Add notification about new weapons being available
+        uiSystem.showNotification("New weapon evolution available! Press E to view");
     }
     
     return result;
@@ -632,7 +645,9 @@ function restartGame() {
     // Reset game state
     uiSystem.resetUI();
     playerSystem.resetPlane();
-    weaponsSystem.setWeaponLevel(weaponsSystem.WEAPON_FLAMETHROWER);
+    
+    // Reset weapon to basic
+    weaponsSystem.setCurrentWeapon('basic');
     uiSystem.updateWeaponInfo(weaponsSystem.getWeaponName());
     
     // Reset game variables
@@ -665,6 +680,12 @@ function restartGame() {
 // Main animation loop
 function animate() {
     if (uiSystem.isGameOver()) return;
+    
+    // Don't animate when evolution menu is open
+    if (evolutionUI.isOpen()) {
+        requestAnimationFrame(animate);
+        return;
+    }
     
     try {
         requestAnimationFrame(animate);
@@ -744,32 +765,29 @@ function animate() {
         // Apply gravity forces to objects
         applyGravityToObjects(deltaTime);
         
+        // Check for weapon level up
+        checkWeaponLevelUp();
+        
         // Firing logic (use calculated aimDirection)
         if (isFiring && !shiftStatus.active) { // Don't fire while shifting
              // Ensure necessary components exist before firing
              if (window.scene && playerSystem && weaponsSystem && targetsSystem && bossSystem) {
+                // Get projectile origin and direction
+                const projectileOrigin = playerSystem.getProjectileOrigin();
+                
+                // Fire the current weapon
                 weaponsSystem.fireWeapon(
-                    playerSystem.getProjectileOrigin(),
-                    aimDirection, // Use the calculated aim direction
+                    projectileOrigin,
+                    aimDirection,
                     window.scene,
-                    targetsSystem.getTargets(), // Still needed for beam weapon raycast
-                    bossSystem.getBossObject(), // Still needed for beam weapon raycast
+                    targetsSystem.getTargets(),
+                    bossSystem.getBossObject(),
                     bossSystem.isBossActive()
                 );
-             } else {
-                 console.warn("Skipping firing due to missing component.");
              }
         }
         
         // Check game state changes
-        checkWeaponLevelUp();
-        
-        // Spawn boss if score threshold reached
-        if (!bossSystem.isBossActive() && uiSystem.getScore() >= SCORE_THRESHOLD_BOSS) {
-            bossSystem.spawnBoss(window.plane, window.scene, playerSystem.getOriginalMaterials());
-        }
-        
-        // Check for game over conditions
         checkGameOver();
         
         // Visual effects & pulsations
@@ -782,7 +800,7 @@ function animate() {
             console.error("Render call skipped: Renderer, Scene or Camera missing.");
         }
     } catch (error) {
-        console.error("Error in animation loop:", error);
+        console.error("Animation loop error:", error);
         triggerGameOver(`Runtime Error: ${error.message}`);
     }
 }

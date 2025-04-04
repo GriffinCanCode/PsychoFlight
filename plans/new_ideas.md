@@ -3,7 +3,7 @@
 Here's a checklist of diverse ideas to potentially add more layers and fun to your game:
 
 ## Gameplay Mechanics & Systems
-- [ ] **Weapon Evolution**: Have the weapon system dynamically morph or evolve (triggered by combos, energy fragments, or score thresholds).
+- [x] **Weapon Evolution**: Have the weapon system dynamically morph or evolve (triggered by combos, energy fragments, or score thresholds).
 - [ ] **Reality Glitch Power-ups**: Collectible items that trigger temporary shifts in game reality (Color Inversion, Time Dilation, Phasing, Entity Swap).
 - [ ] **Rhythm-Based Bonuses**: Integrate gameplay elements with the audio track, rewarding actions in time with musical cues.
 - [ ] **Shield/Absorption Mechanic**: Defensive energy shield that absorbs enemy fire and releases powerful blasts.

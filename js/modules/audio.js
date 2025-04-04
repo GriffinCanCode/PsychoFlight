@@ -23,6 +23,24 @@ const audioSystem = (() => {
     const spreadChorus = new Tone.Chorus(4, 2.5, 0.5).connect(masterVol);
     const beamReverb = new Tone.Reverb(0.5).connect(masterVol);
 
+    // Dimension Shift Audio
+    let dimensionShiftPlayer;
+    try {
+        dimensionShiftPlayer = new Tone.Player({
+            url: "audio/dimension-shift.mp3",
+            loop: true,
+            volume: -8,
+            fadeIn: 0.5,
+            fadeOut: 0.5,
+            autostart: false,
+            onload: () => console.log("Dimension shift audio loaded successfully"),
+            onerror: (e) => console.error("Failed to load dimension shift audio:", e)
+        }).connect(masterVol);
+        console.log("Dimension shift player initialized");
+    } catch (e) {
+        console.error("Error initializing dimension shift player:", e);
+    }
+
     const hitSynth = new Tone.MembraneSynth({ pitchDecay: 0.01, octaves: 5, envelope: { attack: 0.001, decay: 0.2, sustain: 0 } }).connect(masterVol);
     // --- Improved Explosion Synth (Smoother) ---
     const explosionSynth = new Tone.NoiseSynth({
@@ -50,6 +68,12 @@ const audioSystem = (() => {
         envelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.05 }, // Short decay
         modulationEnvelope: { attack: 0.01, decay: 0.05 }
     }).connect(beamReverb);
+    
+    // Menu UI synth
+    const menuSynth = new Tone.Synth({
+        oscillator: { type: "sine" },
+        envelope: { attack: 0.01, decay: 0.1, sustain: 0.05, release: 0.1 }
+    }).connect(masterVol);
     // --- END NEW Weapon Synths ---
 
     const shiftSynth = new Tone.FMSynth({ modulationIndex: 10, harmonicity: 3, envelope: { attack: 0.1, decay: 0.3 }, modulationEnvelope: { attack: 0.05, decay: 0.2 } }).connect(masterVol);
@@ -67,10 +91,93 @@ const audioSystem = (() => {
     const bossSynth = new Tone.MetalSynth({ frequency: 80, envelope: { attack: 0.1, decay: 0.5, release: 0.5 }, harmonicity: 3.1, modulationIndex: 16, octaves: 1.5 }).connect(masterVol);
     
     let smoothedAudioLevel = 0;
+    let dimensionShiftActive = false;
+
+    // Background Music
+    let backgroundMusicPlayer;
+    try {
+        backgroundMusicPlayer = new Tone.Player({
+            url: "audio/background-music.mp3",
+            loop: true,
+            volume: -8,
+            fadeIn: 0.5,
+            fadeOut: 0.5,
+            autostart: false,
+            onload: () => console.log("Background music loaded successfully"),
+            onerror: (e) => console.error("Failed to load background music:", e)
+        }).connect(masterVol);
+        console.log("Background music player initialized");
+    } catch (e) {
+        console.error("Error initializing background music player:", e);
+    }
+
+    // Background music control
+    let backgroundMusicActive = false;
+    
+    function startBackgroundMusic() {
+        if (!audioReady) {
+            console.warn("Cannot start background music: Audio not ready");
+            return;
+        }
+        
+        if (backgroundMusicActive) {
+            console.log("Background music already playing");
+            return;
+        }
+        
+        if (!backgroundMusicPlayer) {
+            console.error("Cannot start background music: Player not initialized");
+            return;
+        }
+        
+        try {
+            console.log("Starting background music...");
+            backgroundMusicPlayer.stop(); // Stop first to prevent any bugs with restarting
+            backgroundMusicPlayer.start();
+            backgroundMusicActive = true;
+            console.log("Background music started successfully");
+        } catch (e) {
+            console.error("Failed to start background music:", e);
+        }
+    }
+    
+    function stopBackgroundMusic() {
+        if (!audioReady) {
+            console.warn("Cannot stop background music: Audio not ready");
+            return;
+        }
+        
+        if (!backgroundMusicActive) {
+            // Already stopped
+            return;
+        }
+        
+        if (!backgroundMusicPlayer) {
+            console.error("Cannot stop background music: Player not initialized");
+            return;
+        }
+        
+        try {
+            console.log("Stopping background music...");
+            backgroundMusicPlayer.stop();
+            backgroundMusicActive = false;
+            console.log("Background music stopped successfully");
+        } catch (e) {
+            console.error("Failed to stop background music:", e);
+            // Force reset state even if there was an error
+            backgroundMusicActive = false;
+        }
+    }
 
     // Public methods
     function playSound(synth, note, duration = "8n", time = Tone.now()) { 
-        if (!audioReady) return; 
+        if (!audioReady) return;
+        
+        // Check if synth is valid
+        if (!synth || typeof synth.triggerAttackRelease !== 'function') {
+            console.warn("Invalid synth passed to playSound");
+            return;
+        }
         
         try {
             // Check if we need to add a time offset to prevent errors
@@ -87,7 +194,13 @@ const audioSystem = (() => {
     }
     
     function playNoise(synth, duration = "8n", time = Tone.now()) { 
-        if (!audioReady) return; 
+        if (!audioReady) return;
+        
+        // Check if synth is valid
+        if (!synth || typeof synth.triggerAttackRelease !== 'function') {
+            console.warn("Invalid synth passed to playNoise");
+            return;
+        }
         
         try {
             // Check if we need to add a time offset to prevent errors
@@ -124,7 +237,14 @@ const audioSystem = (() => {
         return Tone.start().then(() => {
             audioReady = true;
             console.log("Audio Context Ready");
-            return true;
+            
+            // Preload background music and start playing it
+            return preloadBackgroundMusic().then(() => {
+                console.log("Audio initialization complete");
+                // Start background music automatically after load
+                startBackgroundMusic();
+                return true;
+            });
         }).catch(e => {
             console.error("Tone.js start failed:", e);
             return false;
@@ -135,6 +255,131 @@ const audioSystem = (() => {
         return audioReady;
     }
     
+    function startDimensionShift() {
+        if (!audioReady) {
+            console.warn("Cannot start dimension shift audio: Audio not ready");
+            return;
+        }
+        
+        if (dimensionShiftActive) {
+            console.log("Dimension shift audio already playing");
+            return;
+        }
+        
+        if (!dimensionShiftPlayer) {
+            console.error("Cannot start dimension shift audio: Player not initialized");
+            return;
+        }
+        
+        try {
+            console.log("Starting dimension shift audio...");
+            dimensionShiftPlayer.stop(); // Stop first to prevent any bugs with restarting
+            dimensionShiftPlayer.start();
+            dimensionShiftActive = true;
+            console.log("Dimension shift audio started successfully");
+        } catch (e) {
+            console.error("Failed to start dimension shift audio:", e);
+        }
+    }
+    
+    function stopDimensionShift() {
+        if (!audioReady) {
+            console.warn("Cannot stop dimension shift audio: Audio not ready");
+            return;
+        }
+        
+        if (!dimensionShiftActive) {
+            // Already stopped
+            return;
+        }
+        
+        if (!dimensionShiftPlayer) {
+            console.error("Cannot stop dimension shift audio: Player not initialized");
+            return;
+        }
+        
+        try {
+            console.log("Stopping dimension shift audio...");
+            dimensionShiftPlayer.stop();
+            dimensionShiftActive = false;
+            console.log("Dimension shift audio stopped successfully");
+        } catch (e) {
+            console.error("Failed to stop dimension shift audio:", e);
+            // Force reset state even if there was an error
+            dimensionShiftActive = false;
+        }
+    }
+    
+    // Explicitly preload dimension shift audio
+    function preloadDimensionShiftAudio() {
+        if (!dimensionShiftPlayer) {
+            console.error("Cannot preload: Dimension shift player not initialized");
+            return Promise.resolve(false);
+        }
+        
+        return new Promise((resolve) => {
+            console.log("Preloading dimension shift audio...");
+            // Force load the audio file
+            dimensionShiftPlayer.load("audio/dimension-shift.mp3").then(() => {
+                console.log("Preloaded dimension shift audio successfully");
+                resolve(true);
+            }).catch(e => {
+                console.error("Error preloading dimension shift audio:", e);
+                // Try alternative loading method
+                try {
+                    const audioElement = new Audio("audio/dimension-shift.mp3");
+                    audioElement.addEventListener('canplaythrough', () => {
+                        console.log("Dimension shift audio preloaded via Audio element");
+                        resolve(true);
+                    });
+                    audioElement.addEventListener('error', (e) => {
+                        console.error("Alternative preload also failed:", e);
+                        resolve(false);
+                    });
+                    audioElement.load();
+                } catch (err) {
+                    console.error("All preload attempts failed:", err);
+                    resolve(false);
+                }
+            });
+        });
+    }
+    
+    // Explicitly preload background music
+    function preloadBackgroundMusic() {
+        if (!backgroundMusicPlayer) {
+            console.error("Cannot preload: Background music player not initialized");
+            return Promise.resolve(false);
+        }
+        
+        return new Promise((resolve) => {
+            console.log("Preloading background music...");
+            // Force load the audio file
+            backgroundMusicPlayer.load("audio/background-music.mp3").then(() => {
+                console.log("Preloaded background music successfully");
+                resolve(true);
+            }).catch(e => {
+                console.error("Error preloading background music:", e);
+                // Try alternative loading method
+                try {
+                    const audioElement = new Audio("audio/background-music.mp3");
+                    audioElement.addEventListener('canplaythrough', () => {
+                        console.log("Background music preloaded via Audio element");
+                        resolve(true);
+                    });
+                    audioElement.addEventListener('error', (e) => {
+                        console.error("Alternative preload also failed:", e);
+                        resolve(false);
+                    });
+                    audioElement.load();
+                } catch (err) {
+                    console.error("All preload attempts failed:", err);
+                    resolve(false);
+                }
+            });
+        });
+    }
+    
     // Public API
     return {
         playSound,
@@ -142,6 +387,10 @@ const audioSystem = (() => {
         updateAudioAnalysis,
         initAudio,
         isAudioReady,
+        startDimensionShift,
+        stopDimensionShift,
+        preloadDimensionShiftAudio,
+        preloadBackgroundMusic,
         // Expose synths
         hitSynth,
         explosionSynth,
@@ -151,7 +400,10 @@ const audioSystem = (() => {
         shiftSynth,
         levelUpSynth,
         gravitySynth,
-        bossSynth
+        bossSynth,
+        menuSynth,
+        startBackgroundMusic,
+        stopBackgroundMusic
     };
 })();
 

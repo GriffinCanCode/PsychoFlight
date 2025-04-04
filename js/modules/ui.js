@@ -15,6 +15,10 @@ const uiSystem = (() => {
     let bossHealthBar;
     let gameOverOverlay;
     let crosshairElement;
+    let notificationElement; // New element for notifications
+    
+    // Notification timer
+    let notificationTimeout = null;
     
     // Public methods
     function init() {
@@ -27,6 +31,9 @@ const uiSystem = (() => {
         bossHealthBar = document.getElementById('bossHealthBar');
         gameOverOverlay = document.querySelector('.game-over-overlay');
         crosshairElement = document.getElementById('crosshair');
+        
+        // Create notification element
+        createNotificationElement();
         
         // Setup listeners
         document.querySelector('.play-again-button').addEventListener('click', () => {
@@ -47,8 +54,85 @@ const uiSystem = (() => {
             bossHealthBarContainer,
             bossHealthBar,
             gameOverOverlay,
-            crosshairElement
+            crosshairElement,
+            notificationElement
         };
+    }
+    
+    // Create the notification element
+    function createNotificationElement() {
+        // Create the notification element if it doesn't exist yet
+        notificationElement = document.createElement('div');
+        notificationElement.id = 'notification';
+        notificationElement.className = 'game-notification';
+        notificationElement.style.display = 'none';
+        
+        // Add CSS for notifications
+        const style = document.createElement('style');
+        style.textContent = `
+            .game-notification {
+                position: fixed;
+                bottom: 100px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: rgba(0, 20, 40, 0.8);
+                color: #60FFFF;
+                font-family: 'Press Start 2P', cursive;
+                font-size: 0.9rem;
+                padding: 15px 25px;
+                border-radius: 5px;
+                border: 2px solid #60FFFF;
+                box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+                z-index: 10;
+                pointer-events: none;
+                opacity: 0;
+                transition: opacity 0.3s ease;
+                text-shadow: 0 0 5px #60FFFF;
+                animation: glowNotification 2s infinite;
+            }
+            
+            @keyframes glowNotification {
+                0% { box-shadow: 0 0 15px rgba(0, 255, 255, 0.5); text-shadow: 0 0 5px #60FFFF; }
+                50% { box-shadow: 0 0 25px rgba(0, 255, 255, 0.8); text-shadow: 0 0 10px #60FFFF; }
+                100% { box-shadow: 0 0 15px rgba(0, 255, 255, 0.5); text-shadow: 0 0 5px #60FFFF; }
+            }
+            
+            .notification-show {
+                opacity: 1 !important;
+            }
+        `;
+        document.head.appendChild(style);
+        document.body.appendChild(notificationElement);
+    }
+    
+    // Show a notification message to the player
+    function showNotification(message, duration = 5000) {
+        if (!notificationElement) return;
+        
+        // Clear any existing timeout
+        if (notificationTimeout) {
+            clearTimeout(notificationTimeout);
+        }
+        
+        // Set notification text and show it
+        notificationElement.textContent = message;
+        notificationElement.style.display = 'block';
+        
+        // Use setTimeout to ensure CSS transition works
+        setTimeout(() => {
+            notificationElement.classList.add('notification-show');
+        }, 10);
+        
+        // Hide notification after duration
+        notificationTimeout = setTimeout(() => {
+            notificationElement.classList.remove('notification-show');
+            setTimeout(() => {
+                notificationElement.style.display = 'none';
+            }, 300); // Wait for fade out transition
+        }, duration);
+        
+        // Play notification sound
+        audioSystem.playSound(audioSystem.spreadSynth || audioSystem.flamethrowerSynth, ["E5", "A5"], "16n");
     }
     
     function updateScoreDisplay() {
@@ -183,6 +267,16 @@ const uiSystem = (() => {
         hideGameOver();
         hideBossHealthBar();
         updateCrosshair(false);
+        
+        // Clear any active notifications
+        if (notificationTimeout) {
+            clearTimeout(notificationTimeout);
+            notificationTimeout = null;
+        }
+        if (notificationElement) {
+            notificationElement.classList.remove('notification-show');
+            notificationElement.style.display = 'none';
+        }
     }
     
     // Public API
@@ -200,7 +294,8 @@ const uiSystem = (() => {
         isGameOver,
         resetUI,
         updateCrosshair,
-        highlightTarget
+        highlightTarget,
+        showNotification
     };
 })();
 

@@ -1,6 +1,6 @@
 // --- Player Module ---
 import audioSystem from './audio.js';
-import planeData from '../data/plane_data.js'; // Import plane definitions
+import planeData from '../data/planes.js'; // Import plane definitions
 
 const playerSystem = (() => {
     // Private variables
@@ -37,7 +37,7 @@ const playerSystem = (() => {
     // const originalMaterials = new Map(); 
     
     // Constants
-    const SHIFT_DURATION = 1.5;
+    const SHIFT_DURATION = 10.0;
     const SHIFT_COOLDOWN = 5.0;
     
     // Public methods
@@ -131,7 +131,15 @@ const playerSystem = (() => {
             playerInvulnerable = true;
             shiftStartTime = now;
             lastShiftTime = now;
+            
+            // Play the shift sound effect
             audioSystem.playSound(audioSystem.shiftSynth, "C3", 0.5);
+            
+            // Ensure the dimension shift music plays
+            console.log("Starting dimension shift music...");
+            audioSystem.preloadDimensionShiftAudio().then(() => {
+                audioSystem.startDimensionShift();
+            });
             
             // Use the map stored in userData
             const originalMaterialsMap = plane.userData.originalMaterialsMap;
@@ -159,6 +167,7 @@ const playerSystem = (() => {
         isShifting = false;
         playerInvulnerable = false;
         audioSystem.playSound(audioSystem.shiftSynth, "G2", 0.3);
+        audioSystem.stopDimensionShift(); // Stop dimension shift music
         
         // Use the map stored in userData
         const originalMaterialsMap = plane.userData.originalMaterialsMap;
@@ -240,6 +249,8 @@ const playerSystem = (() => {
         isShifting = false;
         playerInvulnerable = false;
         lastShiftTime = -SHIFT_COOLDOWN * 1000;
+        // Ensure dimension shift audio is stopped on reset
+        audioSystem.stopDimensionShift();
         return plane;
     }
     

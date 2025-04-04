@@ -1,17 +1,20 @@
 // --- Weapons Module ---
 import audioSystem from './audio.js';
+import { weaponTypes } from '../data/evolution_tree.js';
 
 const weaponsSystem = (() => {
     // Private variables
     let flames = [];
     let beamLine = null;
-    let weaponLevel = 0; // WEAPON_FLAMETHROWER
+    let currentWeaponId = 'basic'; // Use weapon ID instead of numeric level
     
     // Constants
-    const WEAPON_FLAMETHROWER = 0;
-    const WEAPON_SPREAD = 1;
-    const WEAPON_BEAM = 2;
-    const weaponNames = ["Flamethrower", "Spread Shot", "Beam Cannon"];
+    const WEAPON_FLAMETHROWER = 'flame';
+    const WEAPON_SPREAD = 'spread';
+    const WEAPON_BEAM = 'beam';
+    const WEAPON_NOVA = 'nova';
+    const WEAPON_PHASESHIFT = 'phaseShift';
+    const WEAPON_SINGULARITY = 'singularity';
     
     const flameSpeed = 1.2;
     const flameSize = 0.18;
@@ -32,6 +35,20 @@ const weaponsSystem = (() => {
     
     const beamDuration = 0.1;
     let beamEndTime = 0;
+
+    // Novel weapon parameters
+    const novaExplosionRadius = 6.0;
+    const novaParticlesPerBurst = 20;
+    const novaColor = new THREE.Color(1.0, 0.4, 0.6); // Hot pink
+    
+    const singularityRadius = 15.0;
+    const singularityPullForce = 2.0;
+    const singularityDuration = 3.0;
+    const singularityColor = new THREE.Color(1.0, 0.5, 0.0); // Orange
+    
+    const phaseProjectileCount = 3;
+    const phaseProjectileSpread = 0.05;
+    const phaseColor = new THREE.Color(0.6, 0.25, 1.0); // Purple
     
     // Textures
     const flameTexture = (() => {
@@ -286,72 +303,197 @@ const weaponsSystem = (() => {
         console.log("Firing from:", origin.x.toFixed(2), origin.y.toFixed(2), origin.z.toFixed(2), 
                     "Aiming:", aimDirection.x.toFixed(2), aimDirection.y.toFixed(2), aimDirection.z.toFixed(2));
         
-        if (weaponLevel === WEAPON_FLAMETHROWER) {
-            audioSystem.playNoise(audioSystem.flamethrowerSynth, "32n", now);
-            for (let i = 0; i < flameParticlesPerFrame; i++) {
-                const d = aimDirection.clone();
-                // Add spread in a cone shape
-                const spreadAngle = Math.random() * Math.PI * 2;
-                const spreadRadius = Math.random() * flameSpreadAmount;
-                d.x += Math.cos(spreadAngle) * spreadRadius;
-                d.y += Math.sin(spreadAngle) * spreadRadius;
-                d.normalize();
-                createFlameParticle(origin, d, 1.0, false, 'flame');
-            }
-        } else if (weaponLevel === WEAPON_SPREAD) {
-            audioSystem.playSound(audioSystem.spreadSynth, ["C4", "E4", "G4"], "8n", now);
-            for (let i = 0; i < spreadCount; i++) {
-                const angle = (i - (spreadCount - 1) / 2) * spreadAngle;
-                const d = aimDirection.clone();
+        switch(currentWeaponId) {
+            case WEAPON_FLAMETHROWER:
+                audioSystem.playNoise(audioSystem.flamethrowerSynth, "32n", now);
+                for (let i = 0; i < flameParticlesPerFrame; i++) {
+                    const d = aimDirection.clone();
+                    // Add spread in a cone shape
+                    const spreadAngle = Math.random() * Math.PI * 2;
+                    const spreadRadius = Math.random() * flameSpreadAmount;
+                    d.x += Math.cos(spreadAngle) * spreadRadius;
+                    d.y += Math.sin(spreadAngle) * spreadRadius;
+                    d.normalize();
+                    createFlameParticle(origin, d, 1.0, false, 'flame');
+                }
+                break;
                 
-                // Use the plane's up vector for consistent spread pattern
-                const upVector = new THREE.Vector3(0, 1, 0);
-                if (window.plane) {
-                    upVector.applyQuaternion(window.plane.quaternion);
+            case WEAPON_SPREAD:
+                audioSystem.playSound(audioSystem.spreadSynth, ["C4", "E4", "G4"], "8n", now);
+                for (let i = 0; i < spreadCount; i++) {
+                    const angle = (i - (spreadCount - 1) / 2) * spreadAngle;
+                    const d = aimDirection.clone();
+                    
+                    // Use the plane's up vector for consistent spread pattern
+                    const upVector = new THREE.Vector3(0, 1, 0);
+                    if (window.plane) {
+                        upVector.applyQuaternion(window.plane.quaternion);
+                    }
+                    
+                    d.applyAxisAngle(upVector, angle);
+                    d.normalize();
+                    createFlameParticle(origin, d, 0.85, false, 'spread');
+                }
+                break;
+                
+            case WEAPON_BEAM:
+                audioSystem.playSound(audioSystem.beamSynth, "G5", "16n", now);
+                const beamRaycaster = new THREE.Raycaster();
+                beamRaycaster.set(origin, aimDirection);
+                
+                const intersectObjects = [...targets];
+                if (bossActive && bossObject) {
+                    intersectObjects.push(bossObject);
                 }
                 
-                d.applyAxisAngle(upVector, angle);
-                d.normalize();
-                createFlameParticle(origin, d, 0.85, false, 'spread');
-            }
-        } else if (weaponLevel === WEAPON_BEAM) {
-            audioSystem.playSound(audioSystem.beamSynth, "G5", "16n", now);
-            const beamRaycaster = new THREE.Raycaster();
-            beamRaycaster.set(origin, aimDirection);
-            
-            const intersectObjects = [...targets];
-            if (bossActive && bossObject) {
-                intersectObjects.push(bossObject);
-            }
-            
-            const intersects = beamRaycaster.intersectObjects(intersectObjects);
-            
-            let hitPoint = origin.clone().add(aimDirection.clone().multiplyScalar(500));
-            
-            if (intersects.length > 0) {
-                const firstHit = intersects[0];
-                hitPoint = firstHit.point;
-                const hitObject = firstHit.object;
+                const intersects = beamRaycaster.intersectObjects(intersectObjects);
                 
-                const targetIndex = targets.indexOf(hitObject);
-                if (targetIndex > -1) {
-                    console.log("Beam hit target:", hitObject.uuid);
-                    if (typeof window.damageTarget === 'function') {
-                        window.damageTarget(targets[targetIndex], 50, hitPoint);
-                    }
-                } else if (bossActive && hitObject === bossObject) {
-                    console.log("Beam hit boss");
-                    if (typeof window.damageBoss === 'function') {
-                        window.damageBoss(15, hitPoint);
+                let hitPoint = origin.clone().add(aimDirection.clone().multiplyScalar(500));
+                
+                if (intersects.length > 0) {
+                    const firstHit = intersects[0];
+                    hitPoint = firstHit.point;
+                    const hitObject = firstHit.object;
+                    
+                    const targetIndex = targets.indexOf(hitObject);
+                    if (targetIndex > -1) {
+                        console.log("Beam hit target:", hitObject.uuid);
+                        if (typeof window.damageTarget === 'function') {
+                            window.damageTarget(targets[targetIndex], 50, hitPoint);
+                        }
+                    } else if (bossActive && hitObject === bossObject) {
+                        console.log("Beam hit boss");
+                        if (typeof window.damageBoss === 'function') {
+                            window.damageBoss(15, hitPoint);
+                        }
                     }
                 }
-            }
+                
+                if (beamLine) scene.remove(beamLine);
+                const beamGeometry = new THREE.BufferGeometry().setFromPoints([origin, hitPoint]);
+                beamLine = new THREE.Line(beamGeometry, beamMaterial);
+                scene.add(beamLine);
+                beamEndTime = Date.now() + beamDuration * 1000;
+                break;
+                
+            case WEAPON_NOVA:
+                // Nova Burst - creates an explosion of particles that damage nearby targets
+                audioSystem.playSound(audioSystem.spreadSynth, ["E4", "A4", "C5"], "8n", now);
+                
+                // Create explosion effect
+                createNovaExplosion(origin, aimDirection, scene, targets, bossObject, bossActive);
+                break;
+                
+            case WEAPON_SINGULARITY:
+                // Singularity - creates a gravity well that pulls in enemies
+                audioSystem.playSound(audioSystem.bossSynth, "A2", "2n", now);
+                
+                // Create singularity effect
+                createSingularity(origin, aimDirection, scene);
+                break;
+                
+            case WEAPON_PHASESHIFT:
+                // Phase Disruptor - fires projectiles that can phase through objects
+                audioSystem.playSound(audioSystem.beamSynth, ["B4", "E5", "G5"], "16n", now);
+                
+                // Create phase projectiles
+                for (let i = 0; i < phaseProjectileCount; i++) {
+                    const d = aimDirection.clone();
+                    
+                    // Add slight spread
+                    const spreadX = (Math.random() - 0.5) * phaseProjectileSpread;
+                    const spreadY = (Math.random() - 0.5) * phaseProjectileSpread;
+                    d.x += spreadX;
+                    d.y += spreadY;
+                    d.normalize();
+                    
+                    createFlameParticle(origin, d, 1.0, false, 'phase');
+                }
+                break;
+                
+            default:
+                // Basic weapon or fallback
+                audioSystem.playNoise(audioSystem.flamethrowerSynth, "32n", now);
+                for (let i = 0; i < 2; i++) {
+                    const d = aimDirection.clone();
+                    d.normalize();
+                    createFlameParticle(origin, d, 0.8, false, 'basic');
+                }
+                break;
+        }
+    }
+    
+    // --- New weapon-specific effect functions ---
+    
+    // Create nova explosion effect
+    function createNovaExplosion(origin, direction, scene, targets, bossObject, bossActive) {
+        // Create a visual explosion at the position
+        for (let i = 0; i < novaParticlesPerBurst; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const d = new THREE.Vector3(
+                Math.cos(angle), 
+                Math.sin(angle),
+                (Math.random() - 0.5) * 0.5
+            ).normalize();
             
-            if (beamLine) scene.remove(beamLine);
-            const beamGeometry = new THREE.BufferGeometry().setFromPoints([origin, hitPoint]);
-            beamLine = new THREE.Line(beamGeometry, beamMaterial);
-            scene.add(beamLine);
-            beamEndTime = Date.now() + beamDuration * 1000;
+            createFlameParticle(origin, d, 0.6 + Math.random() * 0.4, false, 'nova');
+        }
+        
+        // Damage targets in radius
+        targets.forEach(target => {
+            const distance = target.position.distanceTo(origin);
+            if (distance < novaExplosionRadius) {
+                // Calculate damage based on distance (more damage closer to center)
+                const damageRatio = 1 - (distance / novaExplosionRadius);
+                const damage = Math.round(35 * damageRatio);
+                
+                if (typeof window.damageTarget === 'function') {
+                    window.damageTarget(target, damage, target.position.clone());
+                }
+            }
+        });
+        
+        // Damage boss if in range
+        if (bossActive && bossObject) {
+            const distance = bossObject.position.distanceTo(origin);
+            if (distance < novaExplosionRadius * 1.5) { // Slightly larger range for boss
+                const damageRatio = 1 - (distance / (novaExplosionRadius * 1.5));
+                const damage = Math.round(15 * damageRatio);
+                
+                if (typeof window.damageBoss === 'function') {
+                    window.damageBoss(damage, bossObject.position.clone());
+                }
+            }
+        }
+    }
+    
+    // Create singularity effect
+    function createSingularity(origin, direction, scene) {
+        // Create visual singularity
+        const singularityGeometry = new THREE.SphereGeometry(1.5, 16, 16);
+        const singularityMaterial = new THREE.MeshBasicMaterial({
+            color: 0xFF8000,
+            transparent: true,
+            opacity: 0.8,
+            emissive: 0xFF4000,
+            emissiveIntensity: 1.0
+        });
+        
+        const singularityMesh = new THREE.Mesh(singularityGeometry, singularityMaterial);
+        singularityMesh.position.copy(origin.clone().add(direction.clone().multiplyScalar(10)));
+        
+        singularityMesh.userData = {
+            isSingularity: true,
+            createdAt: Date.now(),
+            duration: singularityDuration * 1000,
+            radius: singularityRadius,
+            pullForce: singularityPullForce,
+            lastPulseTime: 0
+        };
+        
+        if (scene) {
+            scene.add(singularityMesh);
+            flames.push(singularityMesh); // Use flames array for lifecycle management
         }
     }
     
@@ -743,77 +885,90 @@ const weaponsSystem = (() => {
         }
     }
     
-    function checkWeaponLevelUp(score, scoreThresholds) {
-        let leveledUp = false;
-        
-        if (weaponLevel === WEAPON_FLAMETHROWER && score >= scoreThresholds.spread) {
-            weaponLevel = WEAPON_SPREAD;
-            leveledUp = true;
-        }
-        
-        if (weaponLevel === WEAPON_SPREAD && score >= scoreThresholds.beam) {
-            weaponLevel = WEAPON_BEAM;
-            leveledUp = true;
-        }
-        
-        if (leveledUp) {
-            audioSystem.playSound(audioSystem.levelUpSynth, "C5", "0.5n");
-        }
-        
-        return { weaponLevel, leveledUp };
+    // Updated checkWeaponLevelUp function to work with evolution tree
+    function checkWeaponUnlocks(score, evolutionModule) {
+        // Use the evolution tree's unlock system
+        const hasNewUnlocks = evolutionModule.checkWeaponUnlocks(score);
+        return {
+            leveledUp: hasNewUnlocks,
+            weaponId: currentWeaponId
+        };
     }
     
+    // Get the name of the current weapon
     function getWeaponName() {
-        return weaponNames[weaponLevel];
+        const weapon = weaponTypes[currentWeaponId];
+        return weapon ? weapon.name : "Unknown Weapon";
     }
     
+    // Get all projectiles
     function getFlames() {
         return flames;
     }
     
-    function setWeaponLevel(level) {
-        weaponLevel = level;
+    // Set the current weapon by ID
+    function setCurrentWeapon(weaponId) {
+        if (weaponTypes[weaponId]) {
+            currentWeaponId = weaponId;
+            console.log(`Weapon set to: ${getWeaponName()} (${weaponId})`);
+            return true;
+        }
+        return false;
     }
     
-    function getWeaponLevel() {
-        return weaponLevel;
+    // Get the current weapon ID
+    function getCurrentWeaponId() {
+        return currentWeaponId;
     }
     
+    // Clear all projectiles
     function clearProjectiles() {
-        for (let i = flames.length - 1; i >= 0; i--) {
-            const flame = flames[i];
-            if (flame.parent) flame.parent.remove(flame);
-            if (flame.material) {
-                if (flame.material.map) flame.material.map.dispose();
-                flame.material.dispose();
+        if (window.scene) {
+            for (const flame of flames) {
+                if (flame && flame.parent) {
+                    window.scene.remove(flame);
+                }
+                if (flame && flame.material) {
+                    if (flame.material.map) {
+                        flame.material.map.dispose();
+                    }
+                    flame.material.dispose();
+                }
+                if (flame && flame.geometry) {
+                    flame.geometry.dispose();
+                }
             }
-            if (flame.geometry) flame.geometry.dispose();
+            
+            if (beamLine) {
+                window.scene.remove(beamLine);
+                if (beamLine.geometry) beamLine.geometry.dispose();
+                beamLine = null;
+            }
         }
-        flames = [];
         
-        if (beamLine) {
-            if (beamLine.parent) beamLine.parent.remove(beamLine);
-            beamLine.geometry.dispose();
-            beamLine.material.dispose();
-            beamLine = null;
-        }
+        flames = [];
     }
     
     // Public API
     return {
-        WEAPON_FLAMETHROWER,
-        WEAPON_SPREAD,
-        WEAPON_BEAM,
         createFlameParticle,
         createEnemyProjectile,
         fireWeapon,
         updateProjectiles,
-        checkWeaponLevelUp,
+        checkWeaponUnlocks,
         getWeaponName,
         getFlames,
-        setWeaponLevel,
-        getWeaponLevel,
-        clearProjectiles
+        setCurrentWeapon,
+        getCurrentWeaponId,
+        clearProjectiles,
+        
+        // Export constants for external use
+        WEAPON_FLAMETHROWER,
+        WEAPON_SPREAD,
+        WEAPON_BEAM,
+        WEAPON_NOVA,
+        WEAPON_PHASESHIFT,
+        WEAPON_SINGULARITY
     };
 })();
 
