@@ -135,12 +135,6 @@ const playerSystem = (() => {
             // Play the shift sound effect
             audioSystem.playSound(audioSystem.shiftSynth, "C3", 0.5);
             
-            // Ensure the dimension shift music plays
-            console.log("Starting dimension shift music...");
-            audioSystem.preloadDimensionShiftAudio().then(() => {
-                audioSystem.startDimensionShift();
-            });
-            
             // Use the map stored in userData
             const originalMaterialsMap = plane.userData.originalMaterialsMap;
             if (!originalMaterialsMap) {
@@ -167,7 +161,6 @@ const playerSystem = (() => {
         isShifting = false;
         playerInvulnerable = false;
         audioSystem.playSound(audioSystem.shiftSynth, "G2", 0.3);
-        audioSystem.stopDimensionShift(); // Stop dimension shift music
         
         // Use the map stored in userData
         const originalMaterialsMap = plane.userData.originalMaterialsMap;
@@ -249,8 +242,6 @@ const playerSystem = (() => {
         isShifting = false;
         playerInvulnerable = false;
         lastShiftTime = -SHIFT_COOLDOWN * 1000;
-        // Ensure dimension shift audio is stopped on reset
-        audioSystem.stopDimensionShift();
         return plane;
     }
     

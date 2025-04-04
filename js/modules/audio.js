@@ -23,22 +23,22 @@ const audioSystem = (() => {
     const spreadChorus = new Tone.Chorus(4, 2.5, 0.5).connect(masterVol);
     const beamReverb = new Tone.Reverb(0.5).connect(masterVol);
 
-    // Dimension Shift Audio
-    let dimensionShiftPlayer;
+    // Background Music
+    let backgroundMusicPlayer;
     try {
-        dimensionShiftPlayer = new Tone.Player({
-            url: "audio/dimension-shift.mp3",
+        backgroundMusicPlayer = new Tone.Player({
+            url: "audio/background-music.mp3",
             loop: true,
             volume: -8,
             fadeIn: 0.5,
             fadeOut: 0.5,
             autostart: false,
-            onload: () => console.log("Dimension shift audio loaded successfully"),
-            onerror: (e) => console.error("Failed to load dimension shift audio:", e)
+            onload: () => console.log("Background music loaded successfully"),
+            onerror: (e) => console.error("Failed to load background music:", e)
         }).connect(masterVol);
-        console.log("Dimension shift player initialized");
+        console.log("Background music player initialized");
     } catch (e) {
-        console.error("Error initializing dimension shift player:", e);
+        console.error("Error initializing background music player:", e);
     }
 
     const hitSynth = new Tone.MembraneSynth({ pitchDecay: 0.01, octaves: 5, envelope: { attack: 0.001, decay: 0.2, sustain: 0 } }).connect(masterVol);
@@ -91,27 +91,6 @@ const audioSystem = (() => {
     const bossSynth = new Tone.MetalSynth({ frequency: 80, envelope: { attack: 0.1, decay: 0.5, release: 0.5 }, harmonicity: 3.1, modulationIndex: 16, octaves: 1.5 }).connect(masterVol);
     
     let smoothedAudioLevel = 0;
-    let dimensionShiftActive = false;
-
-    // Background Music
-    let backgroundMusicPlayer;
-    try {
-        backgroundMusicPlayer = new Tone.Player({
-            url: "audio/background-music.mp3",
-            loop: true,
-            volume: -8,
-            fadeIn: 0.5,
-            fadeOut: 0.5,
-            autostart: false,
-            onload: () => console.log("Background music loaded successfully"),
-            onerror: (e) => console.error("Failed to load background music:", e)
-        }).connect(masterVol);
-        console.log("Background music player initialized");
-    } catch (e) {
-        console.error("Error initializing background music player:", e);
-    }
-
-    // Background music control
     let backgroundMusicActive = false;
     
     function startBackgroundMusic() {
@@ -255,96 +234,6 @@ const audioSystem = (() => {
         return audioReady;
     }
     
-    function startDimensionShift() {
-        if (!audioReady) {
-            console.warn("Cannot start dimension shift audio: Audio not ready");
-            return;
-        }
-        
-        if (dimensionShiftActive) {
-            console.log("Dimension shift audio already playing");
-            return;
-        }
-        
-        if (!dimensionShiftPlayer) {
-            console.error("Cannot start dimension shift audio: Player not initialized");
-            return;
-        }
-        
-        try {
-            console.log("Starting dimension shift audio...");
-            dimensionShiftPlayer.stop(); // Stop first to prevent any bugs with restarting
-            dimensionShiftPlayer.start();
-            dimensionShiftActive = true;
-            console.log("Dimension shift audio started successfully");
-        } catch (e) {
-            console.error("Failed to start dimension shift audio:", e);
-        }
-    }
-    
-    function stopDimensionShift() {
-        if (!audioReady) {
-            console.warn("Cannot stop dimension shift audio: Audio not ready");
-            return;
-        }
-        
-        if (!dimensionShiftActive) {
-            // Already stopped
-            return;
-        }
-        
-        if (!dimensionShiftPlayer) {
-            console.error("Cannot stop dimension shift audio: Player not initialized");
-            return;
-        }
-        
-        try {
-            console.log("Stopping dimension shift audio...");
-            dimensionShiftPlayer.stop();
-            dimensionShiftActive = false;
-            console.log("Dimension shift audio stopped successfully");
-        } catch (e) {
-            console.error("Failed to stop dimension shift audio:", e);
-            // Force reset state even if there was an error
-            dimensionShiftActive = false;
-        }
-    }
-    
-    // Explicitly preload dimension shift audio
-    function preloadDimensionShiftAudio() {
-        if (!dimensionShiftPlayer) {
-            console.error("Cannot preload: Dimension shift player not initialized");
-            return Promise.resolve(false);
-        }
-        
-        return new Promise((resolve) => {
-            console.log("Preloading dimension shift audio...");
-            // Force load the audio file
-            dimensionShiftPlayer.load("audio/dimension-shift.mp3").then(() => {
-                console.log("Preloaded dimension shift audio successfully");
-                resolve(true);
-            }).catch(e => {
-                console.error("Error preloading dimension shift audio:", e);
-                // Try alternative loading method
-                try {
-                    const audioElement = new Audio("audio/dimension-shift.mp3");
-                    audioElement.addEventListener('canplaythrough', () => {
-                        console.log("Dimension shift audio preloaded via Audio element");
-                        resolve(true);
-                    });
-                    audioElement.addEventListener('error', (e) => {
-                        console.error("Alternative preload also failed:", e);
-                        resolve(false);
-                    });
-                    audioElement.load();
-                } catch (err) {
-                    console.error("All preload attempts failed:", err);
-                    resolve(false);
-                }
-            });
-        });
-    }
-    
     // Explicitly preload background music
     function preloadBackgroundMusic() {
         if (!backgroundMusicPlayer) {
@@ -387,10 +276,9 @@ const audioSystem = (() => {
         updateAudioAnalysis,
         initAudio,
         isAudioReady,
-        startDimensionShift,
-        stopDimensionShift,
-        preloadDimensionShiftAudio,
         preloadBackgroundMusic,
+        startBackgroundMusic,
+        stopBackgroundMusic,
         // Expose synths
         hitSynth,
         explosionSynth,
@@ -401,9 +289,7 @@ const audioSystem = (() => {
         levelUpSynth,
         gravitySynth,
         bossSynth,
-        menuSynth,
-        startBackgroundMusic,
-        stopBackgroundMusic
+        menuSynth
     };
 })();
 
