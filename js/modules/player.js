@@ -20,14 +20,10 @@ const playerSystem = (() => {
     
     let isFlying = false;
     let isShifting = false;
+    let isAccelerating = false; // New variable for acceleration
     let shiftStartTime = 0;
     let lastShiftTime = -5.0 * 1000; // SHIFT_COOLDOWN * 1000
     let playerInvulnerable = false;
-    
-    // Materials are now defined in plane_data.js
-    // const fuselageMaterial = ... (removed)
-    // const wingMaterial = ... (removed)
-    // const cockpitMaterial = ... (removed)
     
     const shiftMaterial = new THREE.MeshBasicMaterial({ 
         color: 0xffffff, 
@@ -41,6 +37,9 @@ const playerSystem = (() => {
     const SHIFT_COOLDOWN = 5.0;
     const TELEPORT_DISTANCE = 30.0; // Distance to teleport forward
     const TELEPORT_COOLDOWN = 3.0; // Cooldown in seconds
+    const ACCELERATION_BOOST = 1.8; // Speed multiplier when accelerating
+    const NORMAL_FOV = 75; // Default FOV
+    const ACCELERATED_FOV = 100; // FOV when accelerating - increased for more dramatic effect
     
     let lastTeleportTime = -TELEPORT_COOLDOWN * 1000; // Initialize cooldown as ready
     let isTeleporting = false;
@@ -104,14 +103,16 @@ const playerSystem = (() => {
         
         // Apply forward thrust if flying
         if (isFlying) {
-            planeVelocity.add(forward.multiplyScalar(moveSpeed * deltaTime * 10));
+            // Apply acceleration boost if active
+            const speedMultiplier = isAccelerating ? ACCELERATION_BOOST : 1.0;
+            planeVelocity.add(forward.multiplyScalar(moveSpeed * deltaTime * 10 * speedMultiplier));
         } else {
             // Apply damping if not actively thrusting
             planeVelocity.multiplyScalar(velocityDamping);
         }
         
         // Limit overall velocity
-        const maxSpeed = 10.0;
+        const maxSpeed = isAccelerating ? 18.0 : 10.0; // Higher max speed when accelerating
         if (planeVelocity.length() > maxSpeed) {
             planeVelocity.normalize().multiplyScalar(maxSpeed);
         }
@@ -262,6 +263,22 @@ const playerSystem = (() => {
         return isFlying;
     }
     
+    function setIsAccelerating(value) {
+        isAccelerating = value;
+    }
+    
+    function getIsAccelerating() {
+        return isAccelerating;
+    }
+    
+    function getNormalFOV() {
+        return NORMAL_FOV;
+    }
+    
+    function getAcceleratedFOV() {
+        return ACCELERATED_FOV;
+    }
+    
     function isInvulnerable() {
         return playerInvulnerable;
     }
@@ -286,6 +303,7 @@ const playerSystem = (() => {
         yawTarget = 0;
         isFlying = false;
         isShifting = false;
+        isAccelerating = false;
         playerInvulnerable = false;
         lastShiftTime = -SHIFT_COOLDOWN * 1000;
         return plane;
@@ -320,8 +338,10 @@ const playerSystem = (() => {
         // Animate engine glow based on thrust (isFlying)
         const engineGlowMesh = plane.children.find(child => child.userData.isEngineGlow);
         if (engineGlowMesh && materials.engineGlow) {
-            const targetIntensity = isFlying ? 1.5 : 0.5; // Brighter when flying
-            const targetScale = isFlying ? 1.2 : 1.0;
+            const baseIntensity = isFlying ? 1.5 : 0.5;
+            const targetIntensity = isAccelerating ? baseIntensity * 1.5 : baseIntensity; // Brighter when accelerating
+            const baseScale = isFlying ? 1.2 : 1.0;
+            const targetScale = isAccelerating ? baseScale * 1.3 : baseScale; // Larger when accelerating
             const lerpFactor = 0.1;
 
             engineGlowMesh.material.opacity = THREE.MathUtils.lerp(engineGlowMesh.material.opacity, targetIntensity * 0.6, lerpFactor);
@@ -332,10 +352,13 @@ const playerSystem = (() => {
 
         // General material pulsing (similar to game.js updateVisualEffects but moved here)
         const planePulse = 0.5 + Math.sin(elapsedTime * 0.005) * 0.3; 
+        
+        // Increase emissive intensity when accelerating
+        const intensityMultiplier = isAccelerating ? 1.5 : 1.0;
 
-        if (materials.fuselage) materials.fuselage.emissiveIntensity = planePulse * 0.6; // Adjusted intensity
-        if (materials.wing) materials.wing.emissiveIntensity = planePulse * 0.4; // Adjusted intensity
-        if (materials.cockpit) materials.cockpit.emissiveIntensity = planePulse * 0.8; // Adjusted intensity
+        if (materials.fuselage) materials.fuselage.emissiveIntensity = planePulse * 0.6 * intensityMultiplier;
+        if (materials.wing) materials.wing.emissiveIntensity = planePulse * 0.4 * intensityMultiplier;
+        if (materials.cockpit) materials.cockpit.emissiveIntensity = planePulse * 0.8 * intensityMultiplier;
     }
     
     // Public API
@@ -353,6 +376,10 @@ const playerSystem = (() => {
         getProjectileDirection,
         setIsFlying,
         getIsFlying,
+        setIsAccelerating,
+        getIsAccelerating,
+        getNormalFOV,
+        getAcceleratedFOV,
         isInvulnerable,
         getVelocity,
         resetPlane,

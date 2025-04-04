@@ -91,6 +91,7 @@ const uiSystem = (() => {
             ['WASD', 'Steer spacecraft'],
             ['Mouse', 'Look around'],
             ['Space', 'Activate thrusters (fly forward)'],
+            ['Shift', 'Boost acceleration with light streaks'],
             ['G', 'Fire weapons'],
             ['X', 'Dimension shift (temporary invulnerability)'],
             ['T', 'Teleport forward'],

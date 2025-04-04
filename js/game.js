@@ -7,7 +7,7 @@ import targetsSystem from './modules/targets.js';
 import bossSystem from './modules/boss.js';
 import uiSystem from './modules/ui.js';
 import evolutionUI from './modules/evolution_ui.js';
-import zonesSystem from './modules/zones.js';
+import worldSystem from './modules/world.js';
 import enemiesSystem from './modules/enemies.js';
 
 // Make certain variables global for compatibility with the original monolithic approach
@@ -26,6 +26,9 @@ const MAX_LOCK_DISTANCE = 300;
 const AIM_ASSIST_ANGLE = Math.PI / 6; // 30 degrees cone (increased from 15 degrees)
 const AIM_ASSIST_STRENGTH = 0.25; // Increased from 0.1 for stronger aim correction
 const AIM_ASSIST_MAX_DISTANCE = 200; // Maximum distance for aim assist to apply
+const ACCELERATION_STREAK_INTERVAL = 70; // ms between light streak generation - more frequent
+const WARP_EFFECT_INTERVAL = 25; // ms between warp line generation - even more frequent
+const DIMENSION_WARP_INTENSITY = 0.7; // Slightly reduced for less blinding effect
 
 // Game state
 let gameStartTime = Date.now();
@@ -34,20 +37,21 @@ let keys = {};
 let isFiring = false;
 let lockedTarget = null;
 let aimDirection = new THREE.Vector3(0, 0, -1); // Initialize aim direction
+let lastAccelerationStreakTime = 0;
+let lastWarpEffectTime = 0;
+let fovTransition = {
+    current: 75, // Default FOV
+    target: 75,
+    speed: 0.2 // Transition speed - increased for more responsive FOV change
+};
 
-// Initialize scene
-let baseStarSize = 2.0;
-let stars;
-let backgroundHue = 0;
-let backgroundHueSpeed = 0.0005;
-const baseBackgroundHueSpeed = 0.0005;
-const maxBackgroundHueSpeedBoost = 0.0015;
-
-// Add zone progression variables
-let nextZoneScore = 2000;
-const ZONE_SCORE_INCREMENT = 2000;
-const ZONE_SEQUENCE = ['default', 'crystal', 'plasma', 'quantum'];
-let currentZoneIndex = 0;
+// HUD overlay effect for warp
+let warpOverlay = null;
+let colorDistortion = {
+    active: false,
+    intensity: 0,
+    targetIntensity: 0
+};
 
 // Camera
 const cameraOffset = new THREE.Vector3(0, 1.8, 8);
@@ -131,8 +135,10 @@ async function initGame() {
         window.renderer.shadowMap.enabled = true;
         window.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         
-        // Add lights
-        setupLighting();
+        // Initialize world (starfield and lighting)
+        console.log("Initializing world...");
+        worldSystem.init(window.scene);
+        console.log("World initialized successfully");
         
         // Initialize player
         console.log("Creating player plane...");
@@ -142,13 +148,11 @@ async function initGame() {
         }
         console.log("Player plane created successfully");
         
-        // Initialize starfield
-        console.log("Creating starfield...");
-        createStarfield();
-        console.log("Starfield created successfully");
-        
         // Setup input listeners
         setupInputListeners();
+        
+        // Setup warp overlay
+        createWarpOverlay();
         
         // Hide loading message
         hideMessage();
@@ -169,6 +173,319 @@ async function initGame() {
     } catch (error) {
         console.error("Error during game initialization:", error);
         showError("Failed to initialize game. Please refresh the page. Error: " + error.message);
+    }
+}
+
+function createWarpOverlay() {
+    // Create warp overlay div
+    warpOverlay = document.createElement('div');
+    warpOverlay.id = 'warpOverlay';
+    warpOverlay.style.position = 'fixed';
+    warpOverlay.style.top = '0';
+    warpOverlay.style.left = '0';
+    warpOverlay.style.width = '100%';
+    warpOverlay.style.height = '100%';
+    warpOverlay.style.pointerEvents = 'none';
+    warpOverlay.style.zIndex = '5'; // Above game canvas but below UI
+    warpOverlay.style.transition = 'opacity 0.5s ease, background 0.5s ease'; // Smoother transitions
+    warpOverlay.style.background = 'radial-gradient(ellipse at center, transparent 30%, rgba(0, 60, 100, 0) 70%)';
+    warpOverlay.style.opacity = '0';
+    warpOverlay.style.mixBlendMode = 'screen';
+    
+    // Create a central vanishing point with animated rings
+    const vortexContainer = document.createElement('div');
+    vortexContainer.id = 'vortexContainer';
+    vortexContainer.style.position = 'absolute';
+    vortexContainer.style.top = '50%';
+    vortexContainer.style.left = '50%';
+    vortexContainer.style.transform = 'translate(-50%, -50%)';
+    vortexContainer.style.width = '100%';
+    vortexContainer.style.height = '100%';
+    vortexContainer.style.opacity = '0';
+    vortexContainer.style.perspective = '1200px'; // Higher perspective for stronger depth effect
+    vortexContainer.style.perspectiveOrigin = 'center';
+    vortexContainer.style.transformStyle = 'preserve-3d';
+    vortexContainer.style.overflow = 'hidden';
+    
+    // Create animated tunnel rings - fewer rings with better animation
+    for (let i = 0; i < 5; i++) {
+        const ring = document.createElement('div');
+        ring.className = 'warp-ring';
+        ring.style.position = 'absolute';
+        ring.style.top = '50%';
+        ring.style.left = '50%';
+        ring.style.transform = `translate(-50%, -50%) scale(${i * 0.1 + 0.1})`;
+        ring.style.width = '40px'; // Larger rings for better tunnel effect
+        ring.style.height = '40px';
+        ring.style.borderRadius = '50%';
+        ring.style.border = '1px solid rgba(100, 160, 255, 0.4)'; // More subtle ring color
+        ring.style.boxShadow = '0 0 8px rgba(80, 160, 255, 0.4)'; // Softer glow
+        vortexContainer.appendChild(ring);
+    }
+    
+    warpOverlay.appendChild(vortexContainer);
+    
+    // Create blur vignette for tunnel effect - blurs the sides of the screen
+    const blurVignette = document.createElement('div');
+    blurVignette.id = 'blurVignette';
+    blurVignette.style.position = 'absolute';
+    blurVignette.style.top = '0';
+    blurVignette.style.left = '0';
+    blurVignette.style.width = '100%';
+    blurVignette.style.height = '100%';
+    blurVignette.style.opacity = '0';
+    blurVignette.style.transition = 'opacity 0.5s ease';
+    blurVignette.style.background = 'radial-gradient(circle at center, transparent 20%, rgba(0, 30, 80, 0.3) 60%, rgba(0, 20, 60, 0.5) 100%)';
+    blurVignette.style.backdropFilter = 'blur(4px)';
+    blurVignette.style.WebkitBackdropFilter = 'blur(4px)';
+    blurVignette.style.mixBlendMode = 'normal';
+    blurVignette.style.pointerEvents = 'none';
+    warpOverlay.appendChild(blurVignette);
+    
+    // Create radial warp line container
+    const lineContainer = document.createElement('div');
+    lineContainer.style.position = 'absolute';
+    lineContainer.style.top = '0';
+    lineContainer.style.left = '0';
+    lineContainer.style.width = '100%';
+    lineContainer.style.height = '100%';
+    lineContainer.style.overflow = 'hidden';
+    lineContainer.style.opacity = '0';
+    lineContainer.id = 'warpLines';
+    
+    // Create dynamic radial warp lines - Star Trek style with better distribution
+    // Create fewer lines for less visual clutter
+    for (let i = 0; i < 60; i++) {
+        // Use golden ratio distribution for more natural-looking pattern
+        const golden_angle = Math.PI * (3 - Math.sqrt(5));
+        const angle = i * golden_angle;
+        
+        // Calculate distance from center with edge bias
+        // Concentrate more lines toward the edge of the screen to create tunnel effect
+        // Create more empty space in the center
+        const minRadius = 30; // Keep center more clear
+        const radius = minRadius + (Math.sqrt(i / 60) * 100);
+        
+        const line = document.createElement('div');
+        line.className = 'warp-line';
+        line.style.position = 'absolute';
+        line.style.top = '50%';
+        line.style.left = '50%';
+        
+        // Calculate position based on polar coordinates
+        const x = Math.cos(angle) * radius;
+        const y = Math.sin(angle) * radius;
+        
+        // Vary line lengths - shorter lines to reduce dominance
+        const lengthPercent = 30 + Math.random() * 20; // 30-50% length (shorter)
+        
+        // Calculate line angle in degrees
+        const lineAngleDeg = (angle * 180 / Math.PI);
+        
+        line.style.transformOrigin = 'left center';
+        line.style.width = `${lengthPercent}%`; 
+        line.style.height = '1px';
+        
+        // Use subtler gradient that fades more towards the end
+        line.style.background = `linear-gradient(90deg, 
+            rgba(255, 255, 255, 0.5), 
+            rgba(180, 220, 255, 0.3) 40%, 
+            rgba(100, 180, 255, 0.0) 100%)`; 
+        
+        // Position and rotate the line
+        line.style.transform = `translate(${x}px, ${y}px) rotate(${lineAngleDeg}deg)`;
+        
+        // Lower opacity for subtlety
+        line.style.opacity = Math.random() * 0.25 + 0.15; // 0.15-0.4 opacity
+        
+        lineContainer.appendChild(line);
+    }
+    
+    warpOverlay.appendChild(lineContainer);
+    document.body.appendChild(warpOverlay);
+    
+    // Add subtle scanline effect 
+    const scanlines = document.createElement('div');
+    scanlines.id = 'scanlines';
+    scanlines.style.position = 'fixed';
+    scanlines.style.top = '0';
+    scanlines.style.left = '0';
+    scanlines.style.width = '100%';
+    scanlines.style.height = '100%';
+    scanlines.style.pointerEvents = 'none';
+    scanlines.style.zIndex = '4'; // Above canvas but below HUD
+    scanlines.style.opacity = '0';
+    scanlines.style.backgroundImage = 'linear-gradient(rgba(0, 30, 50, 0.03) 50%, transparent 50%)'; // Very subtle
+    scanlines.style.backgroundSize = '100% 4px';
+    scanlines.style.mixBlendMode = 'overlay';
+    
+    document.body.appendChild(scanlines);
+    
+    // Create vignette effect for tunnel-like visualization
+    const vignette = document.createElement('div');
+    vignette.id = 'vignette';
+    vignette.style.position = 'fixed';
+    vignette.style.top = '0';
+    vignette.style.left = '0';
+    vignette.style.width = '100%';
+    vignette.style.height = '100%';
+    vignette.style.pointerEvents = 'none';
+    vignette.style.zIndex = '3';
+    vignette.style.opacity = '0';
+    vignette.style.background = 'radial-gradient(ellipse at center, transparent 60%, rgba(0, 20, 50, 0.5) 100%)'; // Wider clear area
+    document.body.appendChild(vignette);
+    
+    // Create color distortion shader effect (similar to Star Trek warp)
+    const style = document.createElement('style');
+    style.innerHTML = `
+        @keyframes hueRotate {
+            0% { filter: hue-rotate(0deg); }
+            50% { filter: hue-rotate(15deg); } /* Even more subtle rotation */
+            100% { filter: hue-rotate(0deg); }
+        }
+        
+        @keyframes warpZoom {
+            0% { transform: translate(-50%, -50%) scale(0.1); opacity: 0.4; }
+            100% { transform: translate(-50%, -50%) scale(5); opacity: 0; }
+        }
+        
+        .warp-ring {
+            animation: warpZoom 4s infinite linear; /* Slower animation for more realistic effect */
+            animation-delay: calc(var(--i) * 0.6s);
+        }
+        
+        @keyframes warpLineStretch {
+            0% { transform-origin: left center; width: 0%; opacity: 0; }
+            20% { opacity: 0.5; }
+            100% { width: 120%; opacity: 0; } /* Less stretching for subtlety */
+        }
+    `;
+    document.head.appendChild(style);
+    
+    // Apply the animation delay to each ring
+    const rings = document.querySelectorAll('.warp-ring');
+    rings.forEach((ring, i) => {
+        ring.style.setProperty('--i', i);
+        ring.style.animationDelay = `${i * 0.6}s`; // Longer delays for smoother motion
+    });
+}
+
+function updateWarpOverlay(isAccelerating, deltaTime) {
+    if (!warpOverlay) return;
+    
+    // Update color distortion with smoother transition
+    colorDistortion.targetIntensity = isAccelerating ? DIMENSION_WARP_INTENSITY : 0;
+    colorDistortion.intensity = THREE.MathUtils.lerp(
+        colorDistortion.intensity, 
+        colorDistortion.targetIntensity, 
+        deltaTime * 3 // Gentler transition
+    );
+    
+    // Update warp overlay effects based on acceleration
+    const warpOpacity = Math.min(1, colorDistortion.intensity * 1.2);
+    warpOverlay.style.opacity = warpOpacity.toString();
+    
+    // Make gradients more subtle when accelerating
+    if (isAccelerating) {
+        // More subtle blue tones
+        warpOverlay.style.background = `radial-gradient(ellipse at center, 
+            transparent 50%, 
+            rgba(10, 40, 100, ${warpOpacity * 0.15}) 75%, 
+            rgba(0, 20, 60, ${warpOpacity * 0.2}) 100%)`; // Subtle gradient
+    } else {
+        warpOverlay.style.background = 'radial-gradient(ellipse at center, transparent 50%, rgba(0, 20, 50, 0) 100%)';
+    }
+    
+    // Update scanlines with very subtle intensity
+    const scanlines = document.getElementById('scanlines');
+    if (scanlines) {
+        scanlines.style.opacity = (warpOpacity * 0.1).toString(); // Almost invisible scanlines
+    }
+    
+    // Update blur vignette for tunnel-like vision
+    const blurVignette = document.getElementById('blurVignette');
+    if (blurVignette) {
+        blurVignette.style.opacity = (warpOpacity * 0.8).toString(); // Strong blur effect
+    }
+    
+    // Update vignette effect - smoother application
+    const vignette = document.getElementById('vignette');
+    if (vignette) {
+        vignette.style.opacity = (warpOpacity * 0.5).toString(); // Less intense vignette
+    }
+    
+    // Update vortex container (animated rings)
+    const vortex = document.getElementById('vortexContainer');
+    if (vortex) {
+        vortex.style.opacity = warpOpacity.toString();
+    }
+    
+    // Update warp line effect - smoother activation
+    const lines = document.getElementById('warpLines');
+    if (lines) {
+        lines.style.opacity = warpOpacity.toString();
+        
+        // Animate the lines when accelerating
+        if (isAccelerating && colorDistortion.intensity > 0.3) {
+            // Only update animation when sufficiently accelerating
+            const warpLines = lines.querySelectorAll('.warp-line');
+            warpLines.forEach((line, index) => {
+                if (!line.style.animation || line.style.animation === 'none') {
+                    // Variable animation speeds based on position from center
+                    // This creates a more natural, dynamic tunnel effect
+                    const transform = window.getComputedStyle(line).transform;
+                    const matrix = new DOMMatrix(transform);
+                    const distance = Math.sqrt(matrix.m41*matrix.m41 + matrix.m42*matrix.m42);
+                    
+                    // Faster animations for lines further from center
+                    const distanceFactor = Math.min(1.5, distance / 100); // 1.0-1.5 range
+                    const duration = (Math.random() * 0.4 + 0.6) / distanceFactor; // 0.6-1.0s / factor
+                    
+                    line.style.animation = `warpLineStretch ${duration}s infinite linear`;
+                    // Staggered delays for more natural flow
+                    line.style.animationDelay = `${Math.random() * 1.2}s`;
+                }
+            });
+        } else if (colorDistortion.intensity < 0.1) {
+            // Stop animations when slowing down
+            const warpLines = lines.querySelectorAll('.warp-line');
+            warpLines.forEach(line => {
+                line.style.animation = 'none';
+            });
+        }
+    }
+    
+    // Fade crosshair during acceleration
+    const crosshair = document.getElementById('crosshair');
+    if (crosshair) {
+        // Completely fade out crosshair when accelerating
+        const crosshairOpacity = isAccelerating ? 
+            Math.max(0, 1 - colorDistortion.intensity * 5) : // Fade to 0 opacity much faster
+            1; // Full opacity when not accelerating
+        crosshair.style.opacity = crosshairOpacity.toString();
+    }
+    
+    // Apply color distortion to game canvas
+    const canvas = document.getElementById('gameCanvas');
+    if (canvas) {
+        if (colorDistortion.intensity > 0.05) {
+            // Very subtle color effects
+            const hueRotation = 8 * colorDistortion.intensity; // Minimal rotation
+            const saturation = 1 + colorDistortion.intensity * 0.5; // Less saturation boost
+            const brightness = 1 + colorDistortion.intensity * 0.15; // Subtle brightness boost
+            const contrast = 1 + colorDistortion.intensity * 0.1; // Minimal contrast
+            
+            canvas.style.filter = `hue-rotate(${hueRotation}deg) saturate(${saturation}) brightness(${brightness}) contrast(${contrast})`;
+            
+            if (colorDistortion.intensity > 0.6 && !colorDistortion.active) { // Higher threshold
+                colorDistortion.active = true;
+                canvas.style.animation = 'hueRotate 2s infinite'; // Slower animation
+            }
+        } else {
+            colorDistortion.active = false;
+            canvas.style.filter = 'none';
+            canvas.style.animation = 'none';
+        }
     }
 }
 
@@ -198,6 +515,7 @@ function hideMessage() {
 
 function showError(message) {
     const errorDiv = document.createElement('div');
+    errorDiv.id = 'gameError';
     errorDiv.style.position = 'fixed';
     errorDiv.style.top = '50%';
     errorDiv.style.left = '50%';
@@ -212,102 +530,17 @@ function showError(message) {
     document.body.appendChild(errorDiv);
 }
 
-function setupLighting() {
-    const currentZone = zonesSystem.getCurrentZone();
-    const ambientLight = new THREE.HemisphereLight(
-        currentZone.ambientLight.skyColor,
-        currentZone.ambientLight.groundColor,
-        currentZone.ambientLight.intensity
-    );
-    window.scene.add(ambientLight);
-    
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
-    directionalLight.position.set(20, 40, 15);
-    directionalLight.castShadow = true;
-    directionalLight.shadow.mapSize.width = 1024;
-    directionalLight.shadow.mapSize.height = 1024;
-    directionalLight.shadow.camera.near = 1;
-    directionalLight.shadow.camera.far = 100;
-    directionalLight.shadow.camera.left = -50;
-    directionalLight.shadow.camera.right = 50;
-    directionalLight.shadow.camera.top = 50;
-    directionalLight.shadow.camera.bottom = -50;
-    window.scene.add(directionalLight);
-}
-
-function createStarfield() {
-    try {
-        const starsGeometry = new THREE.BufferGeometry();
-        const starVertices = [];
-        const starColors = [];
-        const starCount = 20000;
-        const starSpread = 2000;
-        const baseStarColor = new THREE.Color();
-        
-        for (let i = 0; i < starCount; i++) {
-            const x = (Math.random() - 0.5) * starSpread * 2;
-            const y = (Math.random() - 0.5) * starSpread * 2;
-            const z = (Math.random() - 0.5) * starSpread * 2;
-            starVertices.push(x, y, z);
-            baseStarColor.setHSL(Math.random(), 1.0, 0.7);
-            starColors.push(baseStarColor.r, baseStarColor.g, baseStarColor.b);
-        }
-        
-        starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
-        starsGeometry.setAttribute('color', new THREE.Float32BufferAttribute(starColors, 3));
-        
-        const starsMaterial = new THREE.PointsMaterial({
-            size: baseStarSize,
-            sizeAttenuation: true,
-            vertexColors: true,
-            blending: THREE.AdditiveBlending,
-            transparent: true,
-            opacity: 0.8
-        });
-        
-        stars = new THREE.Points(starsGeometry, starsMaterial);
-        window.scene.add(stars);
-        
-        console.log("Stars created successfully.");
-    } catch(error) {
-        console.error("Error creating stars:", error);
-    }
-}
-
 function updateBackground(audioLevel) {
-    const currentZone = zonesSystem.getCurrentZone();
-    const { transitionProgress, currentZoneData } = zonesSystem.updateZone(clock.getDelta(), Date.now() - gameStartTime);
-
-    // Update background hue speed based on zone and audio level
-    const targetHueSpeed = currentZone.backgroundHueSpeed + maxBackgroundHueSpeedBoost * audioLevel;
-    backgroundHueSpeed = THREE.MathUtils.lerp(backgroundHueSpeed, targetHueSpeed, 0.1);
-    backgroundHue = (backgroundHue + backgroundHueSpeed) % 1;
-    
-    // Blend between base color and hue-shifted color
-    const bgColor = new THREE.Color();
-    bgColor.setHSL(backgroundHue, 0.8, 0.1);
-    bgColor.lerp(currentZone.baseColor, 0.5);
-    window.renderer.setClearColor(bgColor);
-    
-    // Update ambient lighting
-    const ambientLight = window.scene.children.find(c => c instanceof THREE.HemisphereLight);
-    if (ambientLight) {
-        const skyColor = new THREE.Color(currentZone.ambientLight.skyColor);
-        const groundColor = new THREE.Color(currentZone.ambientLight.groundColor);
-        
-        ambientLight.color.copy(skyColor).multiplyScalar(1.0 + audioLevel * 0.2);
-        ambientLight.groundColor.copy(groundColor).multiplyScalar(1.0 + audioLevel * 0.1);
-        ambientLight.intensity = currentZone.ambientLight.intensity * (1.0 + audioLevel * 0.2);
-    }
-
-    // Update star field
-    if (stars && stars.material) {
-        stars.material.size = currentZone.starSize + audioLevel * 1.5;
-        stars.rotation.y += currentZone.starfieldRotationSpeed + audioLevel * 0.0002;
-    }
-
-    // Update audio effects based on zone
-    audioSystem.updateZoneEffects(currentZone.audioEffects);
+    // Use worldSystem to update the world instead of direct updates here
+    worldSystem.update(
+        clock.getDelta(), 
+        audioLevel, 
+        window.renderer, 
+        gameStartTime,
+        uiSystem.getScore(),
+        targetsSystem,
+        playerSystem
+    );
 }
 
 function updateCamera() {
@@ -321,6 +554,11 @@ function updateCamera() {
     t.applyQuaternion(window.plane.quaternion);
     t.add(window.plane.position);
     window.camera.lookAt(t);
+    
+    // Update FOV with smooth transition
+    fovTransition.current = THREE.MathUtils.lerp(fovTransition.current, fovTransition.target, fovTransition.speed);
+    window.camera.fov = fovTransition.current;
+    window.camera.updateProjectionMatrix();
 }
 
 function setupInputListeners() {
@@ -357,6 +595,11 @@ function setupInputListeners() {
             case 'e':
                 evolutionUI.toggleEvolutionMenu();
                 break;
+            case 'shift':
+                playerSystem.setIsAccelerating(true);
+                // Set target FOV for acceleration
+                fovTransition.target = playerSystem.getAcceleratedFOV();
+                break;
         }
     });
     
@@ -370,6 +613,11 @@ function setupInputListeners() {
                 break;
             case 'g':
                 isFiring = false;
+                break;
+            case 'shift':
+                playerSystem.setIsAccelerating(false);
+                // Reset FOV to normal
+                fovTransition.target = playerSystem.getNormalFOV();
                 break;
         }
     });
@@ -807,8 +1055,14 @@ function restartGame() {
     
     gameStartTime = Date.now();
     
+    // Reset zone progression
+    worldSystem.resetZoneProgression();
+    
     // Clean up any remaining objects
     cleanupGameObjects();
+    
+    // Reset warp/HUD effects
+    resetGame();
     
     // Hide UI overlays
     document.querySelector('.game-over-overlay').style.display = 'none';
@@ -819,26 +1073,6 @@ function restartGame() {
     
     // Start animation
     animate();
-}
-
-function checkZoneProgression(score) {
-    if (score >= nextZoneScore && currentZoneIndex < ZONE_SEQUENCE.length - 1) {
-        currentZoneIndex++;
-        const nextZone = ZONE_SEQUENCE[currentZoneIndex];
-        zonesSystem.transitionToZone(nextZone);
-        nextZoneScore += ZONE_SCORE_INCREMENT;
-        
-        // Update target parameters for new zone
-        const zoneData = zonesSystem.getCurrentZone();
-        targetsSystem.updateZoneParameters(
-            zoneData.targetSpawnRate,
-            zoneData.maxTargets,
-            zoneData.targetSpeedMultiplier
-        );
-        
-        return true;
-    }
-    return false;
 }
 
 // Main animation loop
@@ -863,13 +1097,6 @@ function animate() {
         // Update background and zone effects
         updateBackground(audioLevel);
         
-        // Check for zone progression
-        const score = uiSystem.getScore();
-        if (checkZoneProgression(score)) {
-            // Zone transition occurred
-            console.log(`Transitioned to zone: ${zonesSystem.getCurrentZone().name}`);
-        }
-        
         // Update player
         playerSystem.updateMovement(deltaTime, keys);
         
@@ -878,6 +1105,9 @@ function animate() {
         
         // Update camera AFTER player movement
         updateCamera();
+        
+        // Update visual effects (streaks, warp lines, etc.)
+        updateVisualEffects(elapsedTime, audioLevel, deltaTime);
         
         // Update aim direction for weapon targeting
         updateAimDirection();
@@ -930,10 +1160,6 @@ function animate() {
         if (bossSystem.isBossActive()) {
             bossSystem.updateBoss(deltaTime, window.scene);
         }
-        
-        // Update explosions and effects
-        effectsSystem.updateExplosions();
-        effectsSystem.updateGravityWells(deltaTime);
         
         // Firing logic
         if (isFiring && !playerSystem.isShifting()) {
@@ -989,17 +1215,76 @@ function applyGravityToObjects(deltaTime) {
     }
 }
 
-function updateVisualEffects(elapsedTime, audioLevel) {
-    // Update star size based on audio
-    if (stars && stars.material) { // Safety check
-        stars.material.size = baseStarSize + audioLevel * 1.5;
-        stars.rotation.y += 0.0001 + audioLevel * 0.0002;
+function updateVisualEffects(elapsedTime, audioLevel, deltaTime) {
+    // Add acceleration light streaks if player is accelerating
+    if (playerSystem.getIsAccelerating() && playerSystem.getIsFlying()) {
+        const now = Date.now();
+        // Calculate velocity magnitude for effect intensity
+        const velocity = playerSystem.getVelocity();
+        const speed = velocity.length();
+        // Adjust effect frequency based on speed (faster speed = more frequent effects)
+        const speedFactor = Math.min(1.5, Math.max(1.0, speed / 15));
+        const dynamicStreakInterval = ACCELERATION_STREAK_INTERVAL / speedFactor;
+        const dynamicWarpInterval = WARP_EFFECT_INTERVAL / speedFactor;
+        
+        // Generate light streaks behind player
+        if (now - lastAccelerationStreakTime > dynamicStreakInterval) {
+            // Add light streaks
+            effectsSystem.createLightStreak(
+                window.plane.position,
+                playerSystem.getVelocity()
+            );
+            lastAccelerationStreakTime = now;
+        }
+        
+        // Generate Star Trek warp lines
+        if (now - lastWarpEffectTime > dynamicWarpInterval) {
+            // Forward direction for camera (where we're going)
+            const cameraForward = new THREE.Vector3(0, 0, -1).applyQuaternion(window.camera.quaternion);
+            
+            // Create warp line effect 
+            effectsSystem.createWarpEffect(
+                window.camera.position,
+                cameraForward
+            );
+            lastWarpEffectTime = now;
+        }
     }
     
-    // Plane visual updates (like pulsing) are now handled in playerSystem.updateVisuals
+    // Update warp overlay HUD effect
+    updateWarpOverlay(playerSystem.getIsAccelerating() && playerSystem.getIsFlying(), deltaTime);
+    
+    // Update star size is now handled in worldSystem.update()
+}
 
-    // TODO: Add visual feedback for locked target (e.g., in target/boss update or here)
-    // Example: Find the locked target and make it glow slightly more
+function resetGame() {
+    // Reset color distortion
+    colorDistortion.active = false;
+    colorDistortion.intensity = 0;
+    colorDistortion.targetIntensity = 0;
+    
+    // Reset canvas style
+    const canvas = document.getElementById('gameCanvas');
+    if (canvas) {
+        canvas.style.filter = 'none';
+        canvas.style.animation = 'none';
+    }
+    
+    // Reset warp overlay
+    if (warpOverlay) {
+        warpOverlay.style.opacity = '0';
+        warpOverlay.style.background = 'radial-gradient(circle, transparent 30%, rgba(0, 60, 100, 0) 70%)';
+    }
+    
+    const scanlines = document.getElementById('scanlines');
+    if (scanlines) {
+        scanlines.style.opacity = '0';
+    }
+    
+    const lines = document.getElementById('warpLines');
+    if (lines) {
+        lines.style.opacity = '0';
+    }
 }
 
 // Make functions globally available (Careful with globals!)
