@@ -39,6 +39,11 @@ const playerSystem = (() => {
     // Constants
     const SHIFT_DURATION = 10.0;
     const SHIFT_COOLDOWN = 5.0;
+    const TELEPORT_DISTANCE = 30.0; // Distance to teleport forward
+    const TELEPORT_COOLDOWN = 3.0; // Cooldown in seconds
+    
+    let lastTeleportTime = -TELEPORT_COOLDOWN * 1000; // Initialize cooldown as ready
+    let isTeleporting = false;
     
     // Public methods
     function createPlane(scene) {
@@ -196,6 +201,47 @@ const playerSystem = (() => {
         }
     }
     
+    function startTeleport() {
+        const now = Date.now();
+        if (now - lastTeleportTime > TELEPORT_COOLDOWN * 1000) {
+            // Calculate teleport destination
+            const forward = new THREE.Vector3(0, 0, -1);
+            forward.applyQuaternion(plane.quaternion);
+            const destination = plane.position.clone().add(forward.multiplyScalar(TELEPORT_DISTANCE));
+            
+            // Store current velocity for maintaining momentum
+            const currentVelocity = planeVelocity.clone();
+            
+            // Teleport
+            plane.position.copy(destination);
+            planeVelocity.copy(currentVelocity);
+            
+            // Play teleport sound effect
+            audioSystem.playSound(audioSystem.shiftSynth, "E4", 0.3);
+            
+            // Update cooldown
+            lastTeleportTime = now;
+            isTeleporting = true;
+            
+            // Create visual effect
+            effectsSystem.createTeleportEffect(plane.position);
+            
+            return true;
+        }
+        return false;
+    }
+    
+    function updateTeleportStatus() {
+        const now = Date.now();
+        if (isTeleporting) {
+            isTeleporting = false; // Reset immediately since it's instant
+            return { active: false, cooldown: TELEPORT_COOLDOWN };
+        } else {
+            const cooldown = Math.max(0, TELEPORT_COOLDOWN - (now - lastTeleportTime) / 1000);
+            return { active: false, cooldown };
+        }
+    }
+    
     function getProjectileOrigin() {
         const origin = new THREE.Vector3(0, 0, -2.2);  // Front of the plane
         return plane.localToWorld(origin.clone());
@@ -301,6 +347,8 @@ const playerSystem = (() => {
         startShift,
         endShift,
         updateShiftStatus,
+        startTeleport,
+        updateTeleportStatus,
         getProjectileOrigin,
         getProjectileDirection,
         setIsFlying,

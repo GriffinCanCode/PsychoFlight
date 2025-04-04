@@ -5,6 +5,7 @@ const effectsSystem = (() => {
     // Private variables
     let explosions = [];
     let gravityWells = [];
+    let effects = [];
     
     // Constants
     const explosionParticles = 30;
@@ -199,6 +200,54 @@ const effectsSystem = (() => {
         lastGravityWellSpawn = performance.now();
     }
     
+    function createTeleportEffect(position) {
+        const geometry = new THREE.RingGeometry(0, 5, 32);
+        const material = new THREE.MeshBasicMaterial({
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.8,
+            side: THREE.DoubleSide
+        });
+        
+        const ring = new THREE.Mesh(geometry, material);
+        ring.position.copy(position);
+        ring.lookAt(window.camera.position);
+        
+        ring.userData = {
+            type: 'teleport_effect',
+            createdAt: Date.now(),
+            duration: 0.5 // Duration in seconds
+        };
+        
+        window.scene.add(ring);
+        
+        // Add to effects array for updating
+        effects.push(ring);
+    }
+
+    // Update effects array to include teleport effects
+    function updateEffects(deltaTime) {
+        const now = Date.now();
+        
+        for (let i = effects.length - 1; i >= 0; i--) {
+            const effect = effects[i];
+            
+            if (effect.userData.type === 'teleport_effect') {
+                const age = (now - effect.userData.createdAt) / 1000;
+                if (age >= effect.userData.duration) {
+                    window.scene.remove(effect);
+                    effects.splice(i, 1);
+                } else {
+                    // Scale and fade out the ring
+                    const progress = age / effect.userData.duration;
+                    effect.scale.setScalar(1 + progress * 2);
+                    effect.material.opacity = 0.8 * (1 - progress);
+                }
+            }
+            // ... existing effect updates ...
+        }
+    }
+    
     // Public API
     return {
         createExplosion,
@@ -207,7 +256,9 @@ const effectsSystem = (() => {
         applyGravity,
         updateGravityWells,
         getGravityWells,
-        clearEffects
+        clearEffects,
+        createTeleportEffect,
+        updateEffects
     };
 })();
 

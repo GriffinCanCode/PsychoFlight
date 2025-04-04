@@ -274,7 +274,8 @@ function setupInputListeners() {
         if (k === ' ') playerSystem.setIsFlying(true);
         if (k === 'g') isFiring = true;
         if (k === 'x') playerSystem.startShift();
-        if (k === 'e' && !evolutionUI.isOpen()) evolutionUI.toggleEvolutionMenu(); // Toggle evolution menu with E key
+        if (k === 't') playerSystem.startTeleport();
+        if (k === 'e' && !evolutionUI.isOpen()) evolutionUI.toggleEvolutionMenu();
     });
     
     document.addEventListener('keyup', (e) => {
@@ -690,7 +691,7 @@ function animate() {
     try {
         requestAnimationFrame(animate);
         
-        const deltaTime = Math.min(clock.getDelta(), 0.1); // Cap delta time to prevent large jumps
+        const deltaTime = Math.min(clock.getDelta(), 0.1);
         const elapsedTime = Date.now() - gameStartTime;
         
         // Audio analysis
@@ -714,6 +715,13 @@ function animate() {
         // Update dimension shift
         const shiftStatus = playerSystem.updateShiftStatus();
         uiSystem.updateShiftStatus(shiftStatus);
+        
+        // Update teleport
+        const teleportStatus = playerSystem.updateTeleportStatus();
+        uiSystem.updateTeleportStatus(teleportStatus);
+        
+        // Update effects (including teleport effects)
+        effectsSystem.updateEffects(deltaTime);
         
         // Update projectiles
         weaponsSystem.updateProjectiles(

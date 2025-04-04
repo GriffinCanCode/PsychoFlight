@@ -2,6 +2,14 @@
 
 Here's a checklist of diverse ideas to potentially add more layers and fun to your game:
 
+Griffin Ideas:
+
+- Real enemies with AI
+- Cooler teleport animation
+- More music
+- Add a confirm selection button for evolution
+- Settings page
+
 ## Gameplay Mechanics & Systems
 - [x] **Weapon Evolution**: Have the weapon system dynamically morph or evolve (triggered by combos, energy fragments, or score thresholds).
 - [ ] **Reality Glitch Power-ups**: Collectible items that trigger temporary shifts in game reality (Color Inversion, Time Dilation, Phasing, Entity Swap).
